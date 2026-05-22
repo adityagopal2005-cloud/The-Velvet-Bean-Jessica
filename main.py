@@ -89,13 +89,16 @@ def generate_audio(text, filename):
     except: return False
 
 # --- WEB & ADMIN ROUTES ---
-@app.get("/")
-async def home_page():
-    return HTMLResponse("<h1>Jessica is Online</h1><p><a href='/admin'>Go to Command Center</a></p>")
 
-@app.get("/admin")
+@app.get("/", response_class=HTMLResponse)
+async def home_page():
+    # This serves your main website (About, Menu, etc.)
+    with open("home.html") as f: return f.read()
+
+@app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
-    with open("index.html") as f: return HTMLResponse(f.read())
+    # This serves your Command Center dashboard
+    with open("admin.html") as f: return f.read()
 
 # --- BOOKING API ---
 @app.get("/api/bookings")
@@ -128,6 +131,7 @@ async def get_menu():
 @app.post("/api/menu")
 async def add_menu_item(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
     db.menu.insert_one({"name": name, "price": price, "photo": photo})
+    # After adding, redirect back to the admin dashboard
     return HTMLResponse("<script>window.location='/admin'</script>")
 
 @app.delete("/api/menu/{id}")
