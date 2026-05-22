@@ -2,8 +2,9 @@ import os
 import json
 import time
 from datetime import datetime
-from fastapi import FastAPI, Form, Request, BackgroundTasks
+from fastapi import FastAPI, Form, Request, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client as TwilioClient
 from pymongo import MongoClient
@@ -11,9 +12,12 @@ from bson import ObjectId
 from groq import Groq 
 from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 load_dotenv()
 app = FastAPI()
+security = HTTPBasic()
 
 # --- CONNECTIONS ---
 mongo_client = MongoClient(os.getenv("MONGO_URI"))
@@ -22,118 +26,112 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# --- AI SYSTEM PROMPT ---
-chat_history = [
-    {
-        "role": "system", 
-        "content": f"""You are Jessica from 'The Velvet Bean Bistro'. 
-        TODAY: {datetime.now().strftime('%A, %d %B %Y')}
-        RULES: 
-        1. Date format: '20th May 2026'
-        2. Identify the Weekday correctly.
-        JSON ONLY: {{"reply": "...", "is_complete": false, "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null"}}}}"""
-    }
-]
+# --- GOOGLE SHEETS SETUP (Point #4) ---
+try:
+    scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/drive']
+    creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+    gs_client = gspread.authorize(creds)
+    # Connected to your specific spreadsheet ID from the URL provided
+    sheet = gs_client.open_by_key("1eJXw0uQrqQRuWSBvUltN0Rq1pTpIGWtYr1K8AtTOqno").sheet1
+except Exception as e:
+    print(f"⚠️ Sheets Sync Error: {e}")
 
-def send_sms(to_number, message):
-    try:
-        twilio_client.messages.create(
-            from_=os.getenv("TWILIO_PHONE_NUMBER"),
-            to=to_number,
-            body=message
+# --- ADMIN AUTHENTICATION (Point #5) ---
+def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
+    if credentials.username != "Aditya" or credentials.password != "092005":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
         )
-    except Exception as e: 
-        print(f"❌ SMS Fail: {e}")
+    return credentials.username
 
-# --- AI RESPONSE LOGIC ---
-def get_ai_response(user_input, caller_number):
-    chat_history.append({"role": "user", "content": user_input})
+# --- AI SYSTEM PROMPT (Points #2 & #7) ---
+SYSTEM_PROMPT = f"""You are Jessica, the warm and highly professional host at 'The Velvet Bean Bistro'. 
+TODAY: {datetime.now().strftime('%A, %d %B %Y')}
+
+GOAL: Collect Name, Date, Time, and Number of Guests.
+STYLE: Be very human and charming. Use phrases like 'I'd be delighted to assist' or 'Wonderful, and how many guests shall we expect?'. 
+Do not be robotic. If they give a name, use it naturally in conversation.
+
+OUTPUT: Return ONLY a JSON object.
+{{
+  "reply": "Conversational response",
+  "is_complete": true/false,
+  "data": {{
+    "name": "null or value",
+    "date": "null or value",
+    "time": "null or value",
+    "guests": "null or value"
+  }}
+}}"""
+
+# --- CORE LOGIC ---
+
+def sync_to_google_sheets(data):
+    """Stores reservation data permanently in your Google Sheet."""
     try:
-        chat_completion = groq_client.chat.completions.create(
-            messages=chat_history,
+        # Columns: Timestamp, Name, Date, Time, Guests, Contact
+        row = [datetime.now().strftime("%Y-%m-%d %H:%M"), data['name'], data['date'], data['time'], data['guests'], data['contact']]
+        sheet.append_row(row)
+    except Exception as e: 
+        print(f"❌ Google Sheet Sync Fail: {e}")
+
+def get_ai_response(user_input, caller_number):
+    try:
+        # Using a fresh history for the voice interaction
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_input}]
+        completion = groq_client.chat.completions.create(
+            messages=messages,
             model="llama-3.3-70b-versatile",
             response_format={"type": "json_object"}
         )
-        res = json.loads(chat_completion.choices[0].message.content)
-        chat_history.append({"role": "assistant", "content": res['reply']})
+        res = json.loads(completion.choices[0].message.content)
         
         extracted = res.get("data", {})
-        if extracted.get("name") != "null":
-            db.bookings.update_one(
-                {"contact": caller_number},
-                {"$set": {
-                    "name": extracted.get("name"),
-                    "date": extracted.get("date"),
-                    "day": extracted.get("day"),
-                    "time": extracted.get("time"),
-                    "guests": extracted.get("guests"),
-                    "contact": caller_number,
-                    "status": "Confirmed" if res.get("is_complete") else "In-Progress"
-                }},
-                upsert=True
-            )
+        if extracted.get("name") != "null" or extracted.get("time") != "null":
+            booking_data = {
+                "name": extracted.get("name"),
+                "date": extracted.get("date"),
+                "time": extracted.get("time"),
+                "guests": extracted.get("guests"), # Point #1: Track Guests
+                "contact": caller_number,
+                "status": "Confirmed" if res.get("is_complete") else "In-Progress",
+                "last_updated": datetime.now()
+            }
+            db.bookings.update_one({"contact": caller_number}, {"$set": booking_data}, upsert=True)
+            
             if res.get("is_complete"):
-                send_sms(caller_number, f"Hi {extracted['name']}! Your booking at The Velvet Bean for {extracted['date']} is confirmed.")
+                sync_to_google_sheets(booking_data)
+                # SMS Confirmation
+                twilio_client.messages.create(
+                    from_=os.getenv("TWILIO_PHONE_NUMBER"),
+                    to=caller_number,
+                    body=f"Hi {extracted['name']}! Jessica here. Your reservation for {extracted['guests']} guests on {extracted['date']} at {extracted['time']} is confirmed!"
+                )
         return res
-    except: 
-        return {"reply": "Sorry, I missed that.", "is_complete": False}
+    except Exception as e:
+        print(f"AI Error: {e}")
+        return {"reply": "I'm so sorry, I missed that. Could you repeat?", "is_complete": False}
 
-def generate_audio(text, filename):
-    try:
-        audio_generator = el_client.text_to_speech.convert(
-            voice_id="cgSgspJ2msm6clMCkdW9", 
-            text=text,
-            model_id="eleven_turbo_v2_5"
-        )
-        # Ensure static folder exists
-        if not os.path.exists("static"):
-            os.makedirs("static")
-        with open(f"static/{filename}.mp3", "wb") as f:
-            for chunk in audio_generator: f.write(chunk)
-        return True
-    except: 
-        return False
-
-# --- WEB & ADMIN ROUTES ---
+# --- WEB ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def home_page():
     """Serves your Bistro Website (About, Menu, etc.)"""
-    try:
-        with open("home.html") as f: 
-            return f.read()
-    except FileNotFoundError:
-        return "<h1>home.html not found!</h1><p>Please ensure your bistro page is named home.html</p>"
+    with open("home.html") as f: return f.read()
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page():
-    """Serves your Command Center dashboard"""
-    try:
-        with open("index.html") as f: 
-            return f.read()
-    except FileNotFoundError:
-        return "<h1>index.html not found!</h1><p>Please ensure your dashboard page is named index.html</p>"
+async def admin_page(username: str = Depends(authenticate)):
+    """Serves your Dashboard (Password Protected)"""
+    with open("index.html") as f: return f.read()
 
-# --- BOOKING API ---
 @app.get("/api/bookings")
 async def get_bookings():
-    bookings = list(db.bookings.find({}).sort("_id", -1))
+    """Returns 5 closest reservations for the website tab (Point #3)."""
+    bookings = list(db.bookings.find({"status": "Confirmed"}).sort("last_updated", -1).limit(5))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
-
-@app.patch("/api/bookings/{id}")
-async def update_booking(id: str, data: dict):
-    db.bookings.update_one({"_id": ObjectId(id)}, {"$set": data})
-    return {"status": "updated"}
-
-@app.delete("/api/bookings/{id}")
-async def delete_booking(id: str):
-    booking = db.bookings.find_one({"_id": ObjectId(id)})
-    if booking:
-        send_sms(booking['contact'], f"Hi {booking['name']}, your reservation at The Velvet Bean has been cancelled.")
-        db.bookings.delete_one({"_id": ObjectId(id)})
-        return {"status": "deleted"}
-    return {"status": "not found"}
 
 # --- MENU API ---
 @app.get("/api/menu")
@@ -149,16 +147,23 @@ async def add_menu_item(name: str = Form(...), price: str = Form(...), photo: st
 
 @app.delete("/api/menu/{id}")
 async def delete_menu_item(id: str):
-    db.menu.delete_one({"_id": ObjectId(id)})
+    db.bookings.delete_one({"_id": ObjectId(id)})
     return {"status": "deleted"}
 
-# --- VOICE ROUTES ---
+# --- VOICE & AUDIO ---
+def generate_audio(text, filename):
+    try:
+        audio = el_client.text_to_speech.convert(voice_id="cgSgspJ2msm6clMCkdW9", text=text, model_id="eleven_turbo_v2_5")
+        if not os.path.exists("static"): os.makedirs("static")
+        with open(f"static/{filename}.mp3", "wb") as f:
+            for chunk in audio: f.write(chunk)
+        return True
+    except: return False
+
 @app.post("/voice")
 async def voice_start(request: Request):
-    global chat_history
-    chat_history = chat_history[:1] # Reset history for new call
     response = VoiceResponse()
-    greeting = "Hi! Welcome to The Velvet Bean. I'm Jessica. How can I help?"
+    greeting = "Hello! Welcome to The Velvet Bean. This is Jessica speaking, how can I help you?"
     generate_audio(greeting, "greeting")
     response.play(f"{str(request.base_url)}static/greeting.mp3")
     response.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
