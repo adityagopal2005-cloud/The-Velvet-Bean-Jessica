@@ -5,37 +5,131 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Velvet Bean | Signature Rooftop Bistro</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
-        body { background-color: #050505; color: white; font-family: 'Playfair Display', serif; }
-        .hero { background: linear-gradient(to bottom, rgba(0,0,0,0.5), #050505), url('https://images.unsplash.com/photo-1533333484556-519358a7a052?q=80&w=2070'); background-size: cover; background-position: center; }
+        body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; scroll-behavior: smooth; overflow-x: hidden; }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        
+        /* Hero Section with Cinematic Background */
+        .hero-section {
+            background: linear-gradient(to bottom, rgba(0,0,0,0.4), #050505), 
+                        url('https://images.unsplash.com/photo-1533333484556-519358a7a052?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        /* Ambiance Parallax */
+        .ambiance-split {
+            background: linear-gradient(to right, #050505 40%, rgba(5,5,5,0.1)), 
+                        url('https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+        }
+
+        .image-card { transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
+        .image-card:hover { transform: scale(1.03); }
     </style>
 </head>
 <body>
-    <header class="hero h-screen flex flex-col items-center justify-center text-center px-6">
-        <h1 class="text-8xl font-black mb-6">Velvet Bean.</h1>
-        <p class="text-xl font-light text-gray-300 mb-10 max-w-2xl">A rooftop escape where city lights meet artisanal excellence.</p>
-        <a href="tel:+18782907611" class="border border-white/20 px-12 py-5 rounded-full hover:bg-white hover:text-black transition uppercase tracking-widest text-xs font-bold">Book via AI</a>
+
+    <nav class="fixed w-full z-50 px-10 py-8 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">
+        <div class="text-2xl font-serif tracking-widest uppercase">Velvet Bean</div>
+        <div class="space-x-10 text-xs uppercase tracking-[0.3em] text-gray-300 font-light">
+            <a href="#menu" class="hover:text-white transition">Menu</a>
+            <a href="#gallery" class="hover:text-white transition">Ambiance</a>
+            <a href="/admin" class="bg-white/10 px-5 py-2 rounded-full border border-white/20 hover:bg-white hover:text-black transition">Admin</a>
+        </div>
+    </nav>
+
+    <header class="hero-section h-screen flex flex-col items-center justify-center text-center px-6">
+        <div class="space-y-4 mb-8">
+            <span class="text-orange-400 uppercase tracking-[0.5em] text-sm">Est. 2026 — Jaipur</span>
+            <h1 class="text-7xl md:text-9xl font-serif tracking-tighter leading-none">Elevated <br> Dining.</h1>
+        </div>
+        <p class="text-xl md:text-2xl font-light text-gray-300 max-w-2xl mx-auto mb-10">
+            A rooftop escape where the city lights meet artisanal excellence.
+        </p>
+        <a href="tel:+18782907611" class="glass px-16 py-6 rounded-full text-xl font-bold hover:bg-white hover:text-black transition-all duration-500 shadow-2xl">
+            Book via AI Concierge
+        </a>
     </header>
 
-    <section id="menu" class="py-32 px-10">
-        <div class="max-w-5xl mx-auto">
-            <h2 class="text-6xl mb-20 text-center">The Selection</h2>
-            <div id="dynamic-menu" class="grid grid-cols-1 md:grid-cols-2 gap-16"></div>
+    <section class="ambiance-split py-60 px-10">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2">
+            <div class="space-y-8">
+                <h2 class="text-6xl font-serif leading-tight">The View from <br> the Top.</h2>
+                <p class="text-gray-400 text-lg max-w-md font-light">
+                    "Technology serves the coffee, humans serve the soul." Our rooftop lounge offers a 360-degree view of the skyline, designed for conversations that last until dawn.
+                </p>
+            </div>
         </div>
     </section>
+
+    <section id="menu" class="py-32 bg-[#050505] px-10">
+        <div class="max-w-6xl mx-auto text-center mb-20">
+            <h2 class="text-6xl font-serif mb-4">The Selection</h2>
+            <div class="w-20 h-1 bg-orange-500 mx-auto"></div>
+        </div>
+        <div id="dynamic-menu" class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16">
+            </div>
+    </section>
+
+    <section id="gallery" class="py-32 px-6 bg-[#080808]">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="image-card relative h-[500px] md:col-span-2 overflow-hidden rounded-3xl">
+                    <img src="https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover" alt="The Kitchen">
+                    <div class="absolute inset-0 bg-black/40 flex items-end p-10">
+                        <h3 class="text-3xl font-serif">The Heart of the Heat</h3>
+                    </div>
+                </div>
+                <div class="image-card relative h-[500px] overflow-hidden rounded-3xl">
+                    <img src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover" alt="Artisan Coffee">
+                    <div class="absolute inset-0 bg-black/40 flex items-end p-10">
+                        <h3 class="text-3xl font-serif">Pure Roast</h3>
+                    </div>
+                </div>
+                <div class="image-card relative h-[500px] overflow-hidden rounded-3xl">
+                    <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover" alt="Atmosphere">
+                    <div class="absolute inset-0 bg-black/40 flex items-end p-10">
+                        <h3 class="text-3xl font-serif">The Lounge</h3>
+                    </div>
+                </div>
+                <div class="image-card relative h-[500px] md:col-span-2 overflow-hidden rounded-3xl">
+                    <img src="https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover" alt="Plating">
+                    <div class="absolute inset-0 bg-black/40 flex items-end p-10">
+                        <h3 class="text-3xl font-serif">Plated Perfection</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer id="contact" class="py-32 text-center bg-black border-t border-white/5">
+        <h2 class="text-4xl font-serif mb-6">Join Us at the Bean.</h2>
+        <p class="text-gray-500 tracking-[0.4em] uppercase mb-12">123 Rooftop Plaza • Jaipur • +1 (878) 290-7611</p>
+        <div class="flex justify-center space-x-10 text-xs text-gray-600 uppercase tracking-widest">
+            <span>Instagram</span>
+            <span>Twitter</span>
+            <span>Vibe</span>
+        </div>
+    </footer>
 
     <script>
         async function fetchMenu() {
             const res = await fetch('/api/menu');
             const items = await res.json();
             document.getElementById('dynamic-menu').innerHTML = items.map(item => `
-                <div class="flex items-center space-x-8">
-                    <img src="${item.photo}" class="w-32 h-32 rounded-3xl object-cover grayscale hover:grayscale-0 transition duration-500">
+                <div class="group flex items-center space-x-8 p-4 hover:bg-white/[0.02] rounded-3xl transition duration-500">
+                    <img src="${item.photo}" class="w-40 h-40 rounded-2xl object-cover grayscale group-hover:grayscale-0 transition duration-700">
                     <div class="flex-1">
-                        <div class="flex justify-between border-b border-white/10 pb-2">
-                            <span class="text-xl font-bold">${item.name}</span>
-                            <span class="text-orange-400">${item.price}</span>
+                        <div class="flex justify-between items-baseline border-b border-white/10 pb-2">
+                            <span class="text-2xl font-serif">${item.name}</span>
+                            <span class="text-orange-400 font-light">${item.price}</span>
                         </div>
+                        <p class="text-gray-500 text-sm mt-3 uppercase tracking-tighter italic">Signature Dish</p>
                     </div>
                 </div>
             `).join('');

@@ -5,92 +5,194 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Command Center | Velvet Bean</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; }
         .glass-panel { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); }
+        input, select { background: #111 !important; border: 1px solid #333 !important; color: white !important; }
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .status-confirmed { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .status-talking { background: rgba(234, 179, 8, 0.2); color: #eab308; }
     </style>
 </head>
-<body class="p-10">
-    <div class="max-w-7xl mx-auto">
-        <h1 class="text-5xl font-black mb-12 tracking-tighter">Command Center</h1>
+<body class="p-6 md:p-10">
+    <div class="max-w-[1600px] mx-auto">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-end mb-12 border-b border-white/10 pb-8">
+            <div>
+                <h1 class="text-5xl font-black tracking-tighter">Command Center</h1>
+                <p class="text-gray-500 mt-2 uppercase text-[10px] tracking-[0.2em] font-bold">Bistro Operations & AI Control</p>
+            </div>
+            <div class="flex gap-4">
+                <a href="/" class="text-xs border border-white/20 px-6 py-2 rounded-full hover:bg-white hover:text-black transition font-bold uppercase tracking-widest">Live Site</a>
+                <div class="flex items-center gap-2 text-[10px] text-green-500 font-bold uppercase border border-green-500/30 px-4 py-2 rounded-full">
+                    <span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span> Jessica Active
+                </div>
+            </div>
+        </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            <div class="lg:col-span-1 space-y-6">
-                <div class="glass-panel p-6 rounded-3xl">
-                    <h2 class="text-blue-500 font-bold text-xs uppercase mb-4">New Menu Item</h2>
-                    <input id="m-name" placeholder="Name" class="w-full bg-black p-3 rounded-xl mb-2 text-sm border border-white/10">
-                    <input id="m-price" placeholder="Price" class="w-full bg-black p-3 rounded-xl mb-2 text-sm border border-white/10">
-                    <input id="m-photo" placeholder="Photo URL" class="w-full bg-black p-3 rounded-xl mb-4 text-sm border border-white/10">
-                    <button onclick="addMenuItem()" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs">Add Item</button>
+        <div class="grid grid-cols-1 xl:grid-cols-4 gap-8">
+            
+            <!-- Sidebar Controls -->
+            <div class="xl:col-span-1 space-y-8">
+                <!-- Bistro Rules -->
+                <div class="glass-panel p-8 rounded-[2rem] space-y-6">
+                    <h2 class="text-orange-500 font-black text-xs uppercase tracking-[0.2em]">Bistro Rules</h2>
+                    <div>
+                        <p class="text-[10px] text-gray-500 mb-4 font-bold uppercase">Operating Hours: <span id="open-val" class="text-white">10:00</span> - <span id="close-val" class="text-white">23:00</span></p>
+                        <div class="space-y-4">
+                            <input type="range" id="open-time" min="0" max="23" value="10" class="w-full accent-orange-500">
+                            <input type="range" id="close-time" min="0" max="23" value="23" class="w-full accent-orange-500">
+                        </div>
+                    </div>
+                    <button onclick="updateRules()" class="w-full bg-orange-500 text-black font-black py-4 rounded-2xl hover:bg-orange-400 transition uppercase text-xs">Update Rules</button>
+                </div>
+
+                <!-- Add Menu Item -->
+                <div class="glass-panel p-8 rounded-[2rem]">
+                    <h2 class="text-blue-500 font-black text-xs uppercase tracking-[0.2em] mb-6">New Menu Item</h2>
+                    <form id="menuForm" class="space-y-3">
+                        <input name="name" id="m-name" placeholder="Item Name" class="w-full p-4 rounded-xl text-sm outline-none focus:border-blue-500">
+                        <input name="price" id="m-price" placeholder="Price (e.g. $14)" class="w-full p-4 rounded-xl text-sm outline-none focus:border-blue-500">
+                        <input name="photo" id="m-photo" placeholder="Image URL" class="w-full p-4 rounded-xl text-sm outline-none focus:border-blue-500">
+                        <button type="button" onclick="addMenuItem()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-500 transition uppercase text-xs">Add to Menu</button>
+                    </form>
                 </div>
             </div>
 
-            <div class="lg:col-span-3 space-y-8">
-                <div class="glass-panel rounded-3xl overflow-hidden">
-                    <table class="w-full text-left">
-                        <thead class="bg-white/5 text-[10px] uppercase font-bold text-gray-500">
-                            <tr><th class="p-5">Guest</th><th class="p-5">Time</th><th class="p-5">Guests</th><th class="p-5 text-right">Action</th></tr>
-                        </thead>
-                        <tbody id="booking-table-body" class="divide-y divide-white/5"></tbody>
-                    </table>
+            <!-- Main Dashboard Area -->
+            <div class="xl:col-span-3 space-y-8">
+                <!-- Live Reservations -->
+                <div class="bg-zinc-900/40 rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl">
+                    <div class="p-6 border-b border-white/5 bg-white/5">
+                        <h2 class="text-xs font-black uppercase tracking-widest">Live Guest Spreadsheet (Top 5)</h2>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-[10px] uppercase font-bold text-gray-500 bg-black/40">
+                                    <th class="p-5">Guest Name</th>
+                                    <th class="p-5">Date</th>
+                                    <th class="p-5">Time</th>
+                                    <th class="p-5">Guests</th>
+                                    <th class="p-5">Status</th>
+                                    <th class="p-5 text-right">Control</th>
+                                </tr>
+                            </thead>
+                            <tbody id="booking-table-body" class="divide-y divide-white/5">
+                                <!-- Data injected here -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div id="menu-list" class="grid grid-cols-2 gap-4"></div>
+                <!-- Active Menu Display -->
+                <div class="glass-panel p-8 rounded-[2.5rem]">
+                    <h2 class="text-gray-500 font-black text-xs uppercase tracking-[0.2em] mb-6">Active Menu Items</h2>
+                    <div id="menu-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Menu items injected here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        async function loadData() {
-            const bRes = await fetch('/api/bookings');
-            const bookings = await bRes.json();
-            document.getElementById('booking-table-body').innerHTML = bookings.map(b => `
-                <tr class="text-sm">
-                    <td class="p-5 font-bold">${b.name}</td>
-                    <td class="p-5 text-orange-400 font-mono">${b.time}</td>
-                    <td class="p-5 text-gray-400">${b.guests}</td>
-                    <td class="p-5 text-right">
-                        <button onclick="deleteBooking('${b._id}')" class="text-red-500 font-bold uppercase text-[10px]">Cancel</button>
-                    </td>
-                </tr>
-            `).join('');
+        // Pre-loaded 10 Menu Items (Point #8)
+        const defaultMenu = [
+            { name: "Truffle Mac & Cheese", price: "$18", photo: "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=2070" },
+            { name: "Signature Velvet Latte", price: "$7", photo: "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=2070" },
+            { name: "Wagyu Beef Sliders", price: "$24", photo: "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=2070" },
+            { name: "Avocado Burrata Toast", price: "$16", photo: "https://images.unsplash.com/photo-1525351484163-7529414344d8?q=80&w=2070" },
+            { name: "Spicy Tuna Crispy Rice", price: "$21", photo: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?q=80&w=2070" },
+            { name: "Rooftop Berry Parfait", price: "$12", photo: "https://images.unsplash.com/photo-1488477181946-6428a0291777?q=80&w=2070" },
+            { name: "Lobster Ravioli", price: "$32", photo: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2070" },
+            { name: "Golden Saffron Risotto", price: "$28", photo: "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=2070" },
+            { name: "Artisanal Cheese Board", price: "$26", photo: "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?q=80&w=2070" },
+            { name: "Midnight Chocolate Ganache", price: "$14", photo: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=2070" }
+        ];
 
-            const mRes = await fetch('/api/menu');
-            const menu = await mRes.json();
-            document.getElementById('menu-list').innerHTML = menu.map(m => `
-                <div class="glass-panel p-4 rounded-2xl flex items-center justify-between">
-                    <div class="flex items-center gap-4">
-                        <img src="${m.photo}" class="w-12 h-12 rounded-xl object-cover">
-                        <div><p class="font-bold text-xs">${m.name}</p><p class="text-blue-400 text-[10px] font-bold">${m.price}</p></div>
+        async function loadData() {
+            try {
+                // Fetch Bookings (Top 5)
+                const bRes = await fetch('/api/bookings');
+                const bookings = await bRes.json();
+                const tableBody = document.getElementById('booking-table-body');
+                tableBody.innerHTML = bookings.length ? bookings.map(b => `
+                    <tr class="hover:bg-white/5 transition group text-sm">
+                        <td class="p-5 font-bold text-white">${b.name || 'Anonymous'}</td>
+                        <td class="p-5 text-gray-400 text-xs">${b.date || 'TBD'}</td>
+                        <td class="p-5 text-orange-400 font-mono text-xs font-bold">${b.time || 'TBD'}</td>
+                        <td class="p-5 text-gray-400">${b.guests || '1'}</td>
+                        <td class="p-5"><span class="status-badge ${b.status === 'Confirmed' ? 'status-confirmed' : 'status-talking'}">${b.status}</span></td>
+                        <td class="p-5 text-right">
+                            <button onclick="cancelBooking('${b._id}', '${b.name}')" class="text-red-500 text-[10px] font-black hover:scale-110 transition uppercase">Cancel</button>
+                        </td>
+                    </tr>
+                `).join('') : '<tr><td colspan="6" class="p-10 text-center text-gray-600 text-xs uppercase tracking-widest">No active reservations</td></tr>';
+
+                // Fetch Menu
+                const mRes = await fetch('/api/menu');
+                let menu = await mRes.json();
+                
+                // If DB is empty, show default 10 items
+                if (menu.length === 0) menu = defaultMenu;
+
+                document.getElementById('menu-list').innerHTML = menu.map(m => `
+                    <div class="flex items-center justify-between bg-black/50 p-4 rounded-2xl border border-white/5 group hover:border-white/20 transition">
+                        <div class="flex items-center gap-4">
+                            <img src="${m.photo}" class="w-12 h-12 rounded-xl object-cover grayscale group-hover:grayscale-0 transition">
+                            <div>
+                                <p class="font-bold text-xs text-white">${m.name}</p>
+                                <p class="text-blue-400 text-[10px] font-bold">${m.price}</p>
+                            </div>
+                        </div>
+                        <button onclick="deleteMenu('${m._id}')" class="text-gray-600 hover:text-red-500 transition text-[9px] font-bold uppercase">Remove</button>
                     </div>
-                    <button onclick="deleteMenu('${m._id}')" class="text-gray-600 hover:text-red-500 text-xs">✕</button>
-                </div>
-            `).join('');
+                `).join('');
+            } catch (e) { console.log("Load error:", e); }
         }
 
         async function addMenuItem() {
-            const fd = new FormData();
-            fd.append('name', document.getElementById('m-name').value);
-            fd.append('price', document.getElementById('m-price').value);
-            fd.append('photo', document.getElementById('m-photo').value);
-            await fetch('/api/menu', { method: 'POST', body: fd });
+            const name = document.getElementById('m-name').value;
+            const price = document.getElementById('m-price').value;
+            const photo = document.getElementById('m-photo').value;
+            
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('price', price);
+            formData.append('photo', photo);
+
+            await fetch('/api/menu', { method: 'POST', body: formData });
+            document.getElementById('menuForm').reset();
             loadData();
         }
 
-        async function deleteBooking(id) {
-            if(confirm("Delete this row?")) {
+        async function cancelBooking(id, name) {
+            if(confirm(`Cancel reservation for ${name}?`)) {
                 await fetch(`/api/bookings/${id}`, { method: 'DELETE' });
                 loadData();
             }
         }
 
-        async function deleteMenu(id) {
-            await fetch(`/api/menu/${id}`, { method: 'DELETE' });
-            loadData();
+        async function updateRules() {
+            const open = document.getElementById('open-time').value;
+            const close = document.getElementById('close-time').value;
+            await fetch('/api/rules', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({open, close}) 
+            });
+            alert("Bistro Rules Updated!");
         }
 
-        setInterval(loadData, 5000);
+        // Live slider values
+        document.getElementById('open-time').oninput = function() { document.getElementById('open-val').innerText = this.value + ":00"; };
+        document.getElementById('close-time').oninput = function() { document.getElementById('close-val').innerText = this.value + ":00"; };
+
         loadData();
+        setInterval(loadData, 5000);
     </script>
 </body>
 </html>
