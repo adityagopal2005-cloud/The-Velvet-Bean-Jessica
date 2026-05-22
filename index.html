@@ -42,13 +42,18 @@
             </div>
 
             <div class="xl:col-span-3 space-y-8">
-                <div class="bg-zinc-900/40 rounded-[2.5rem] border border-white/5 overflow-hidden">
-                    <table class="w-full text-left">
-                        <thead class="text-[10px] uppercase font-bold text-gray-500 bg-black/40">
-                            <tr><th class="p-6">Guest</th><th class="p-6">Time</th><th class="p-6">Status</th><th class="p-6 text-right">Control</th></tr>
-                        </thead>
-                        <tbody id="booking-table-body" class="divide-y divide-white/5"></tbody>
-                    </table>
+                <div class="bg-zinc-900/40 rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl">
+                    <div class="p-6 border-b border-white/5 bg-white/5">
+                        <h2 class="text-xs font-black uppercase tracking-widest">Live Guest Spreadsheet (Newest First)</h2>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="text-[10px] uppercase font-bold text-gray-500 bg-black/40">
+                                <tr><th class="p-6">Guest</th><th class="p-6">Time</th><th class="p-6">Status</th><th class="p-6 text-right">Control</th></tr>
+                            </thead>
+                            <tbody id="booking-table-body" class="divide-y divide-white/5"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

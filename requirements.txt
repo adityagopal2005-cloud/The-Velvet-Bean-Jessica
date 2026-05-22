@@ -1,4 +1,4 @@
-fastapi
+echo "fastapi
 uvicorn
 twilio
 pymongo
@@ -7,3 +7,4 @@ elevenlabs
 python-dotenv
 gspread
 oauth2client
+python-multipart" > requirements.txt

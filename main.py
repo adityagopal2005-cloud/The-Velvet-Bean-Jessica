@@ -64,9 +64,9 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 # --- HUMANIZED AI PROMPT ---
-SYSTEM_PROMPT = f"""You are Jessica, the warm and professional host at 'The Velvet Bean Bistro'. 
+SYSTEM_PROMPT = f"""You are Jessica, the warm host at 'The Velvet Bean Bistro'. 
 TODAY: {datetime.now().strftime('%A, %d %B %Y')}
-YOUR GOAL: Collect Name, Date, Time, and Number of Guests. Output JSON only."""
+Collect Name, Date, Time, and Guests. Output JSON ONLY."""
 
 def get_ai_response(user_input, caller_number):
     try:
@@ -76,26 +76,20 @@ def get_ai_response(user_input, caller_number):
         )
         res = json.loads(completion.choices[0].message.content)
         extracted = res.get("data", {})
-        
         if extracted.get("name") != "null":
             booking_data = {
-                "name": extracted.get("name"),
-                "date": extracted.get("date"),
-                "time": extracted.get("time"),
-                "guests": extracted.get("guests"),
-                "contact": caller_number,
-                "status": "Confirmed" if res.get("is_complete") else "In-Progress",
-                "timestamp": datetime.now()
+                "name": extracted.get("name"), "date": extracted.get("date"), "time": extracted.get("time"),
+                "guests": extracted.get("guests"), "contact": caller_number,
+                "status": "Confirmed" if res.get("is_complete") else "In-Progress", "timestamp": datetime.now()
             }
             db.bookings.update_one({"contact": caller_number}, {"$set": booking_data}, upsert=True)
-            
             if res.get("is_complete"):
                 try:
                     row = [datetime.now().strftime("%Y-%m-%d %H:%M"), booking_data['name'], booking_data['date'], booking_data['time'], booking_data['guests'], caller_number]
                     sheet.append_row(row)
                 except: pass
         return res
-    except: return {"reply": "I'm so sorry, I missed that.", "is_complete": False}
+    except: return {"reply": "Sorry, I missed that.", "is_complete": False}
 
 # --- WEB & API ROUTES ---
 @app.get("/", response_class=HTMLResponse)
@@ -108,7 +102,7 @@ async def admin_page(username: str = Depends(authenticate)):
 
 @app.get("/api/bookings")
 async def get_bookings():
-    # LOGIC: Sort by most recent update
+    # Sort by timestamp descending (newest first)
     bookings = list(db.bookings.find().sort("timestamp", -1).limit(25))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
@@ -165,8 +159,7 @@ async def handle_response(request: Request, SpeechResult: str = Form(...), From:
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.get("/static/{file_name}")
-async def serve_static(file_name: str):
-    return FileResponse(f"static/{file_name}")
+async def serve_static(file_name: str): return FileResponse(f"static/{file_name}")
 
 if __name__ == "__main__":
     import uvicorn
