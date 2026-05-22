@@ -12,8 +12,6 @@ from bson import ObjectId
 from groq import Groq 
 from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
 load_dotenv()
 app = FastAPI()
@@ -44,15 +42,6 @@ def seed_menu():
         db.menu.insert_many(items)
 seed_menu()
 
-# --- GOOGLE SHEETS SETUP ---
-try:
-    scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-    gs_client = gspread.authorize(creds)
-    sheet = gs_client.open_by_key("1eJXw0uQrqQRuWSBvUltN0Rq1pTpIGWtYr1K8AtTOqno").sheet1
-except Exception as e:
-    print(f"⚠️ Sheets Sync Error: {e}")
-
 # --- ADMIN AUTHENTICATION ---
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != "Aditya" or credentials.password != "092005":
@@ -63,31 +52,34 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
-# --- HUMANIZED AI PROMPT ---
-SYSTEM_PROMPT = f"""You are Jessica, the warm host at 'The Velvet Bean Bistro'. 
-TODAY: {datetime.now().strftime('%A, %d %B %Y')}
-Collect Name, Date, Time, and Guests. Output JSON ONLY."""
+# --- OPERATIONS CHECK ---
+def get_bistro_status():
+    rules = db.rules.find_one({"type": "hours"}) or {"days": "All Days"}
+    current_day = datetime.now().strftime('%A')
+    if rules['days'] == "Weekdays" and current_day in ["Saturday", "Sunday"]:
+        return False
+    if rules['days'] == "Weekends" and current_day not in ["Saturday", "Sunday"]:
+        return False
+    return True
 
+# --- HUMANIZED AI PROMPT ---
 def get_ai_response(user_input, caller_number):
+    is_open = get_bistro_status()
+    rules = db.rules.find_one({"type": "hours"}) or {"days": "All Days"}
+    
+    SYSTEM_PROMPT = f"""You are Jessica, the warm host at 'The Velvet Bean Bistro'. 
+    Current Day: {datetime.now().strftime('%A')}. 
+    Bistro Status: {'OPEN' if is_open else 'CLOSED'}.
+    Operating Days: {rules['days']}.
+    If the bistro is CLOSED, politely tell the guest we are only open on {rules['days']}.
+    If OPEN, collect Name, Date, Time, and Guests. Output JSON ONLY."""
+
     try:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_input}]
         completion = groq_client.chat.completions.create(
             messages=messages, model="llama-3.3-70b-versatile", response_format={"type": "json_object"}
         )
         res = json.loads(completion.choices[0].message.content)
-        extracted = res.get("data", {})
-        if extracted.get("name") != "null":
-            booking_data = {
-                "name": extracted.get("name"), "date": extracted.get("date"), "time": extracted.get("time"),
-                "guests": extracted.get("guests"), "contact": caller_number,
-                "status": "Confirmed" if res.get("is_complete") else "In-Progress", "timestamp": datetime.now()
-            }
-            db.bookings.update_one({"contact": caller_number}, {"$set": booking_data}, upsert=True)
-            if res.get("is_complete"):
-                try:
-                    row = [datetime.now().strftime("%Y-%m-%d %H:%M"), booking_data['name'], booking_data['date'], booking_data['time'], booking_data['guests'], caller_number]
-                    sheet.append_row(row)
-                except: pass
         return res
     except: return {"reply": "Sorry, I missed that.", "is_complete": False}
 
@@ -102,8 +94,7 @@ async def admin_page(username: str = Depends(authenticate)):
 
 @app.get("/api/bookings")
 async def get_bookings():
-    # Sort by timestamp descending (newest first)
-    bookings = list(db.bookings.find().sort("timestamp", -1).limit(25))
+    bookings = list(db.bookings.find().sort("timestamp", -1))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
 
@@ -118,10 +109,14 @@ async def add_menu_item(name: str = Form(...), price: str = Form(...), photo: st
     db.menu.insert_one({"name": name, "price": price, "photo": photo})
     return HTMLResponse("<script>window.location='/admin'</script>")
 
-@app.delete("/api/bookings/{id}")
-async def delete_booking(id: str):
-    db.bookings.delete_one({"_id": ObjectId(id)})
+@app.delete("/api/menu/{id}")
+async def delete_menu_item(id: str):
+    db.menu.delete_one({"_id": ObjectId(id)})
     return {"status": "deleted"}
+
+@app.get("/api/rules")
+async def get_rules():
+    return db.rules.find_one({"type": "hours"}) or {"days": "All Days", "open": "10", "close": "23"}
 
 @app.post("/api/rules")
 async def update_rules(data: dict):
