@@ -2,7 +2,7 @@ import os
 import json
 import time
 from datetime import datetime
-from fastapi import FastAPI, Form, Request, BackgroundTasks
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client as TwilioClient
@@ -14,11 +14,12 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# Auto-create static folder for Railway
+# --- INITIALIZATION ---
+
+# Create static folder for voice clips (ephemeral on Railway)
 if not os.path.exists("static"):
     os.makedirs("static")
 
-# CONNECTIONS
 try:
     mongo_client = MongoClient(os.getenv("MONGO_URI"))
     db = mongo_client["RestaurantDB"] 
@@ -26,17 +27,33 @@ try:
     el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
     twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 except Exception as e:
-    print(f"CRITICAL: Connection Error - {e}")
+    print(f"CRITICAL: Resource Connection Failed: {e}")
 
-chat_history = [
-    {
+# Global chat history (Reset per call in /voice)
+chat_history = []
+
+def get_system_prompt():
+    return {
         "role": "system", 
         "content": f"""You are Jessica from 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
-        RULES: 1. Date format: '20th May 2026' 2. Identify Weekday.
+        RULES: 
+        1. Date format: '20th May 2026'
+        2. Identify the Weekday correctly.
         JSON ONLY: {{"reply": "...", "is_complete": false, "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null"}}}}"""
     }
-]
+
+# --- HELPER FUNCTIONS ---
+
+def send_sms(to_number, message):
+    try:
+        twilio_client.messages.create(
+            from_=os.getenv("TWILIO_PHONE_NUMBER"),
+            to=to_number,
+            body=message
+        )
+    except Exception as e: 
+        print(f"❌ SMS Fail: {e}")
 
 def generate_audio(text, filename):
     try:
@@ -45,7 +62,8 @@ def generate_audio(text, filename):
             text=text,
             model_id="eleven_turbo_v2_5"
         )
-        with open(f"static/{filename}.mp3", "wb") as f:
+        file_path = f"static/{filename}.mp3"
+        with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
         return True
     except Exception as e:
@@ -68,19 +86,24 @@ def get_ai_response(user_input, caller_number):
             db.bookings.update_one(
                 {"contact": caller_number},
                 {"$set": {
-                    "name": extracted.get("name"), "date": extracted.get("date"),
-                    "day": extracted.get("day"), "time": extracted.get("time"),
-                    "guests": extracted.get("guests"), "contact": caller_number,
+                    "name": extracted.get("name"),
+                    "date": extracted.get("date"),
+                    "day": extracted.get("day"),
+                    "time": extracted.get("time"),
+                    "guests": extracted.get("guests"),
+                    "contact": caller_number,
                     "status": "Confirmed" if res.get("is_complete") else "In-Progress"
                 }},
                 upsert=True
             )
+            if res.get("is_complete"):
+                send_sms(caller_number, f"Hi {extracted['name']}! Your booking at The Velvet Bean for {extracted['date']} is confirmed.")
         return res
     except Exception as e:
-        print(f"AI/DB Error: {e}")
-        return {"reply": "I'm sorry, I missed that.", "is_complete": False}
+        print(f"Groq/DB Error: {e}")
+        return {"reply": "I'm having a little trouble hearing you. Could you repeat that?", "is_complete": False}
 
-# --- ROUTES ---
+# --- WEB ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def home_page():
@@ -90,28 +113,70 @@ async def home_page():
 async def admin_page():
     with open("index.html") as f: return f.read()
 
+# --- API ENDPOINTS ---
+
+@app.get("/api/bookings")
+async def get_bookings():
+    bookings = list(db.bookings.find({}).sort("_id", -1))
+    for b in bookings: b["_id"] = str(b["_id"])
+    return bookings
+
+@app.get("/api/menu")
+async def get_menu():
+    menu = list(db.menu.find({}))
+    for m in menu: m["_id"] = str(m["_id"])
+    return menu
+
+@app.post("/api/menu")
+async def add_menu(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
+    db.menu.insert_one({"name": name, "price": price, "photo": photo})
+    return HTMLResponse("<script>window.location.href='/admin'</script>")
+
+@app.patch("/api/bookings/{id}")
+async def update_booking(id: str, data: dict):
+    from bson import ObjectId
+    db.bookings.update_one({"_id": ObjectId(id)}, {"$set": data})
+    return {"status": "updated"}
+
+@app.delete("/api/bookings/{id}")
+async def delete_booking(id: str):
+    from bson import ObjectId
+    booking = db.bookings.find_one({"_id": ObjectId(id)})
+    if booking:
+        send_sms(booking['contact'], f"Hi {booking['name']}, your reservation at The Velvet Bean has been cancelled.")
+        db.bookings.delete_one({"_id": ObjectId(id)})
+        return {"status": "deleted"}
+    return {"status": "not found"}
+
+# --- TWILIO AI VOICE LOGIC ---
+
 @app.post("/voice")
 async def voice_start(request: Request):
     global chat_history
-    chat_history = chat_history[:1]
-    response = VoiceResponse()
-    # Force HTTPS for Railway
+    chat_history = [get_system_prompt()] # Initialize fresh history
+    
+    # Force HTTPS for Railway/Twilio compatibility
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     
+    response = VoiceResponse()
     greeting = "Hi! I'm Jessica from The Velvet Bean. How can I help you today?"
-    generate_audio(greeting, "greeting")
     
-    response.play(f"{base_url}/static/greeting.mp3")
-    response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='0.8'))
+    if generate_audio(greeting, "greeting"):
+        response.play(f"{base_url}/static/greeting.mp3")
+    else:
+        response.say(greeting)
+    
+    gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='0.8')
+    response.append(gather)
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, SpeechResult: str = Form(None), From: str = Form(None)):
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
-    
+
     if not SpeechResult:
-        response.say("I didn't catch that. Could you repeat it?")
+        response.say("I'm sorry, I didn't catch that. Could you repeat it?")
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='0.8'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -132,24 +197,10 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
 async def serve_static(file_name: str):
     return FileResponse(f"static/{file_name}")
 
-# --- API ENDPOINTS (FOR ADMIN PANEL) ---
-@app.get("/api/bookings")
-async def get_bookings():
-    bookings = list(db.bookings.find({}).sort("_id", -1))
-    for b in bookings: b["_id"] = str(b["_id"])
-    return bookings
 
-@app.get("/api/menu")
-async def get_menu():
-    menu = list(db.menu.find({}))
-    for m in menu: m["_id"] = str(m["_id"])
-    return menu
-
-@app.post("/api/menu")
-async def add_menu(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
-    db.menu.insert_one({"name": name, "price": price, "photo": photo})
-    return HTMLResponse("<script>window.location.href='/admin'</script>")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    # Important: Use os.environ.get for Railway compatibility
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
