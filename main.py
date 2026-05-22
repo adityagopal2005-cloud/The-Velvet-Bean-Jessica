@@ -168,6 +168,8 @@ async def voice_start(request: Request):
     
     # Force HTTPS for Railway/Twilio compatibility
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+    audio_url = f"{base_url}/static/{filename}.mp3"
+    response.play(audio_url)
     
     response = VoiceResponse()
     greeting = "Hi! I'm Jessica from The Velvet Bean. How can I help you today?"
