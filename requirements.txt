@@ -5,6 +5,4 @@ pymongo
 groq
 elevenlabs
 python-dotenv
-gspread
-oauth2client
 python-multipart
