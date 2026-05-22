@@ -35,19 +35,27 @@ def get_system_prompt():
         "content": f"""You are Jessica, the professional concierge at 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
         
-        GOAL: Collect Name, Date, Time, Guests politely. 
-        NOTES: Capture special requests (window seat, etc.) in 'notes'.
+        GOAL: You MUST collect: 1. Name, 2. Date, 3. Time, 4. Number of Guests.
+        NOTES: If the guest mentions any special requirements (window seat, anniversary, allergies, etc.), 
+        you MUST capture these exactly in the 'notes' field for the admin panel.
         
         RULES:
-        - Don't end until you have Name, Date, Time, and Guests.
-        - Summary and 'Goodbye' are required at the end.
-        - Only set 'is_complete' to true AFTER saying goodbye.
+        - Do NOT end the call until you have captured Name, Date, Time, and Guests.
+        - Once all info is gathered, summarize the booking details clearly.
+        - End with a warm, professional 'Goodbye'.
+        - Only set 'is_complete' to true AFTER you have spoken your final goodbye.
         
-        JSON ONLY:
+        JSON ONLY FORMAT:
         {{
-            "reply": "verbal response",
+            "reply": "your verbal response here",
             "is_complete": false,
-            "data": {{"name": "null", "date": "null", "time": "null", "guests": "null", "notes": "null"}}
+            "data": {{
+                "name": "null", 
+                "date": "null", 
+                "time": "null", 
+                "guests": "null",
+                "notes": "null"
+            }}
         }}"""
     }
 
@@ -55,7 +63,8 @@ def get_system_prompt():
 
 def generate_audio(text, filename):
     try:
-        # Check if characters are remaining/API is valid
+        # NOTE: If using Railway, ElevenLabs Free Tier may continue to return 401. 
+        # A paid Starter plan ($1) is often required to bypass cloud IP blocking.
         audio_generator = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text,
@@ -66,11 +75,10 @@ def generate_audio(text, filename):
         with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
         
-        print(f"✅ ElevenLabs Success: {file_path}")
+        print(f"✅ ElevenLabs Audio Created: {file_path}")
         return True
     except Exception as e:
-        # This will show you the EXACT error in Railway Logs (e.g., 401 Unauthorized or 429 Out of Quota)
-        print(f"❌ ElevenLabs Error: {e}")
+        print(f"❌ ElevenLabs API Error: {e}")
         return False
 
 def get_ai_response(user_input, caller_number):
@@ -86,6 +94,7 @@ def get_ai_response(user_input, caller_number):
         
         extracted = res.get("data", {})
         if extracted.get("name") != "null":
+            # Saves Name, Date, Time, Guests, AND extra Requirements to 'notes'
             db.bookings.update_one(
                 {"contact": caller_number},
                 {"$set": {
@@ -101,8 +110,8 @@ def get_ai_response(user_input, caller_number):
             )
         return res
     except Exception as e:
-        print(f"AI Error: {e}")
-        return {"reply": "I'm sorry, I missed that.", "is_complete": False}
+        print(f"Groq Error: {e}")
+        return {"reply": "I'm sorry, I missed that. Could you repeat it?", "is_complete": False}
 
 # --- TWILIO ROUTES ---
 
@@ -111,19 +120,19 @@ async def voice_start(request: Request):
     global chat_history
     chat_history = [get_system_prompt()]
     
-    # FORCE HTTPS - Critical for Twilio to play audio from Railway
+    # Force HTTPS to ensure Twilio can access the hosted audio files
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     
     response = VoiceResponse()
-    greeting = "Welcome to The Velvet Bean. This is Jessica. How can I help you with your reservation today?"
+    greeting = "Welcome to The Velvet Bean. I'm Jessica. How can I help you with your reservation today?"
     
     if generate_audio(greeting, "greeting"):
         response.play(f"{base_url}/static/greeting.mp3")
     else:
         response.say(greeting)
     
-    # timeout 1.2 and enhanced=True for better listening
-    gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2', enhanced=True)
+    # Increased timeout (1.5s) and 'enhanced' mode to prevent cutting off the guest
+    gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5', enhanced=True)
     response.append(gather)
     return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -133,8 +142,8 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     response = VoiceResponse()
 
     if not SpeechResult:
-        response.say("I didn't catch that. Could you repeat it?")
-        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2'))
+        response.say("I'm sorry, I'm still listening. What were the details for the booking?")
+        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     ai_decision = get_ai_response(SpeechResult, From)
@@ -145,8 +154,9 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     else:
         response.say(ai_decision['reply'])
 
+    # Only hangs up if AI explicitly says goodbye and sets complete
     if not ai_decision.get("is_complete"):
-        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2'))
+        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
     else:
         response.hangup()
     
