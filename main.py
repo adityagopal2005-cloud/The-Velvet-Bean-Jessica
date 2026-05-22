@@ -57,17 +57,28 @@ def send_sms(to_number, message):
 
 def generate_audio(text, filename):
     try:
+        # 1. Check if API Key exists
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not api_key:
+            print("❌ Error: ELEVENLABS_API_KEY is missing from Railway Variables")
+            return False
+
+        # 2. Attempt conversion
         audio_generator = el_client.text_to_speech.convert(
-            voice_id="cgSgspJ2msm6clMCkdW9", 
+            voice_id="cgSgspJ2msm6clMCkdW9", # Double-check this ID in your dashboard
             text=text,
-            model_id="eleven_turbo_v2_5"
+            model_id="eleven_turbo_v2_5" # Turbo is fastest for Twilio
         )
+        
         file_path = f"static/{filename}.mp3"
         with open(file_path, "wb") as f:
-            for chunk in audio_generator: f.write(chunk)
+            for chunk in audio_generator:
+                f.write(chunk)
+        
+        print(f"✅ Audio generated successfully: {file_path}")
         return True
     except Exception as e:
-        print(f"ElevenLabs Error: {e}")
+        print(f"❌ ElevenLabs API Error: {e}")
         return False
 
 def get_ai_response(user_input, caller_number):
