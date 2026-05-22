@@ -26,7 +26,7 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# --- FEATURE: 10 FOOD ITEMS AUTO-SEED ---
+# --- LOGIC: 10 ITEM SEEDER ---
 def seed_menu():
     if db.menu.count_documents({}) == 0:
         items = [
@@ -51,97 +51,95 @@ try:
     gs_client = gspread.authorize(creds)
     sheet = gs_client.open_by_key("1eJXw0uQrqQRuWSBvUltN0Rq1pTpIGWtYr1K8AtTOqno").sheet1
 except Exception as e:
-    print(f"⚠️ Sheets Error: {e}")
+    print(f"⚠️ Sheets Sync Error: {e}")
 
-# --- FEATURE: ADMIN LOGIN (Aditya/092005) ---
+# --- ADMIN AUTHENTICATION ---
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != "Aditya" or credentials.password != "092005":
-        raise HTTPException(status_code=401, detail="Invalid Admin Credentials", headers={"WWW-Authenticate": "Basic"})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
     return credentials.username
 
-# --- AI HOST LOGIC ---
-SYSTEM_PROMPT = f"""You are Jessica, the host at 'The Velvet Bean'. 
+# --- HUMANIZED AI PROMPT ---
+SYSTEM_PROMPT = f"""You are Jessica, the warm and professional host at 'The Velvet Bean Bistro'. 
 TODAY: {datetime.now().strftime('%A, %d %B %Y')}
-GOAL: Collect Name, Date, Time, and Number of Guests. 
-JSON ONLY output: {{"reply": "text", "is_complete": false, "data": {{"name": "null", "date": "null", "time": "null", "guests": "null"}}}}"""
+YOUR GOAL: Collect Name, Date, Time, and Number of Guests. Output JSON only."""
 
 def get_ai_response(user_input, caller_number):
     try:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_input}]
-        completion = groq_client.chat.completions.create(messages=messages, model="llama-3.3-70b-versatile", response_format={"type": "json_object"})
+        completion = groq_client.chat.completions.create(
+            messages=messages, model="llama-3.3-70b-versatile", response_format={"type": "json_object"}
+        )
         res = json.loads(completion.choices[0].message.content)
-        ext = res.get("data", {})
+        extracted = res.get("data", {})
         
-        if ext.get("name") != "null":
-            booking = {
-                "name": ext.get("name"), "date": ext.get("date"), "time": ext.get("time"), 
-                "guests": ext.get("guests"), "contact": caller_number,
+        if extracted.get("name") != "null":
+            booking_data = {
+                "name": extracted.get("name"),
+                "date": extracted.get("date"),
+                "time": extracted.get("time"),
+                "guests": extracted.get("guests"),
+                "contact": caller_number,
                 "status": "Confirmed" if res.get("is_complete") else "In-Progress",
                 "timestamp": datetime.now()
             }
-            db.bookings.update_one({"contact": caller_number}, {"$set": booking}, upsert=True)
+            db.bookings.update_one({"contact": caller_number}, {"$set": booking_data}, upsert=True)
             
             if res.get("is_complete"):
                 try:
-                    sheet.append_row([datetime.now().strftime("%Y-%m-%d %H:%M"), ext['name'], ext['date'], ext['time'], ext['guests'], caller_number])
-                    twilio_client.messages.create(
-                        from_=os.getenv("TWILIO_PHONE_NUMBER"), 
-                        to=caller_number, 
-                        body=f"Confirmed! Your table for {ext['guests']} at Velvet Bean is set for {ext['date']} at {ext['time']}."
-                    )
+                    row = [datetime.now().strftime("%Y-%m-%d %H:%M"), booking_data['name'], booking_data['date'], booking_data['time'], booking_data['guests'], caller_number]
+                    sheet.append_row(row)
                 except: pass
         return res
-    except: return {"reply": "I'm sorry, I missed that. Could you say it again?", "is_complete": False}
+    except: return {"reply": "I'm so sorry, I missed that.", "is_complete": False}
 
-# --- ROUTES ---
+# --- WEB & API ROUTES ---
 @app.get("/", response_class=HTMLResponse)
-async def home():
+async def home_page():
     with open("home.html") as f: return f.read()
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin(username: str = Depends(authenticate)):
+async def admin_page(username: str = Depends(authenticate)):
     with open("index.html") as f: return f.read()
 
 @app.get("/api/bookings")
 async def get_bookings():
-    # FEATURE: NEWEST FIRST SORTING
-    bookings = list(db.bookings.find().sort("timestamp", -1).limit(20))
+    # LOGIC: Sort by most recent update
+    bookings = list(db.bookings.find().sort("timestamp", -1).limit(25))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
+
+@app.get("/api/menu")
+async def get_menu():
+    menu = list(db.menu.find({}))
+    for m in menu: m["_id"] = str(m["_id"])
+    return menu
+
+@app.post("/api/menu")
+async def add_menu_item(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
+    db.menu.insert_one({"name": name, "price": price, "photo": photo})
+    return HTMLResponse("<script>window.location='/admin'</script>")
 
 @app.delete("/api/bookings/{id}")
 async def delete_booking(id: str):
     db.bookings.delete_one({"_id": ObjectId(id)})
     return {"status": "deleted"}
 
-@app.get("/api/menu")
-async def get_menu():
-    items = list(db.menu.find())
-    for i in items: i["_id"] = str(i["_id"])
-    return items
-
-@app.post("/api/menu")
-async def add_menu(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
-    db.menu.insert_one({"name": name, "price": price, "photo": photo})
-    return {"status": "added"}
-
-@app.delete("/api/menu/{id}")
-async def delete_menu(id: str):
-    db.menu.delete_one({"_id": ObjectId(id)})
-    return {"status": "deleted"}
-
 @app.post("/api/rules")
-async def update_rules(request: Request):
-    data = await request.json()
-    db.rules.update_one({"type": "bistro"}, {"$set": data}, upsert=True)
-    return {"status": "updated"}
+async def update_rules(data: dict):
+    db.rules.update_one({"type": "hours"}, {"$set": data}, upsert=True)
+    return {"status": "rules updated"}
 
-# --- VOICE ---
-def gen_audio(text, fname):
+# --- VOICE ROUTES ---
+def generate_audio(text, filename):
     try:
         audio = el_client.text_to_speech.convert(voice_id="cgSgspJ2msm6clMCkdW9", text=text, model_id="eleven_turbo_v2_5")
         if not os.path.exists("static"): os.makedirs("static")
-        with open(f"static/{fname}.mp3", "wb") as f:
+        with open(f"static/{filename}.mp3", "wb") as f:
             for chunk in audio: f.write(chunk)
         return True
     except: return False
@@ -149,20 +147,22 @@ def gen_audio(text, fname):
 @app.post("/voice")
 async def voice_start(request: Request):
     response = VoiceResponse()
-    greeting = "Welcome to The Velvet Bean, Jessica speaking! How can I help you today?"
-    gen_audio(greeting, "greeting")
+    greeting = "The Velvet Bean Bistro, Jessica speaking!"
+    generate_audio(greeting, "greeting")
     response.play(f"{str(request.base_url)}static/greeting.mp3")
     response.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
-async def handle_voice(request: Request, SpeechResult: str = Form(...), From: str = Form(...)):
-    ai = get_ai_response(SpeechResult, From)
-    fname = f"r_{int(time.time())}"
-    res = VoiceResponse()
-    if gen_audio(ai['reply'], fname): res.play(f"{str(request.base_url)}static/{fname}.mp3")
-    if not ai.get("is_complete"): res.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
-    return HTMLResponse(content=str(res), media_type="application/xml")
+async def handle_response(request: Request, SpeechResult: str = Form(...), From: str = Form(...)):
+    ai_decision = get_ai_response(SpeechResult, From)
+    filename = f"reply_{int(time.time())}"
+    response = VoiceResponse()
+    if generate_audio(ai_decision['reply'], filename):
+        response.play(f"{str(request.base_url)}static/{filename}.mp3")
+    if not ai_decision.get("is_complete"):
+        response.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
+    return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.get("/static/{file_name}")
 async def serve_static(file_name: str):
