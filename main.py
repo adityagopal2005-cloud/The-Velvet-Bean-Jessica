@@ -35,52 +35,41 @@ def get_system_prompt():
         "content": f"""You are Jessica, the professional concierge at 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
         
-        YOUR GOAL: Collect all booking details politely.
-        REQUIRED INFO: 1. Name, 2. Date, 3. Time, 4. Number of Guests.
+        GOAL: Collect Name, Date, Time, Guests politely. 
+        NOTES: Capture special requests (window seat, etc.) in 'notes'.
         
         RULES:
-        - Do NOT end the call until you have all 4 pieces of info (Name, Date, Time, Guests).
-        - If the guest mentions a special request (window seat, celebration, allergies), capture it in 'notes'.
-        - Once all info is collected, summarize the booking and say a warm 'Goodbye'. 
-        - Only set 'is_complete' to true AFTER you have said your final goodbye.
+        - Don't end until you have Name, Date, Time, and Guests.
+        - Summary and 'Goodbye' are required at the end.
+        - Only set 'is_complete' to true AFTER saying goodbye.
         
-        JSON ONLY FORMAT:
+        JSON ONLY:
         {{
-            "reply": "your verbal response",
+            "reply": "verbal response",
             "is_complete": false,
-            "data": {{
-                "name": "null", 
-                "date": "null", 
-                "time": "null", 
-                "guests": "null",
-                "notes": "null"
-            }}
+            "data": {{"name": "null", "date": "null", "time": "null", "guests": "null", "notes": "null"}}
         }}"""
     }
 
 # --- HELPER FUNCTIONS ---
 
-def send_sms(to_number, message):
-    try:
-        twilio_client.messages.create(
-            from_=os.getenv("TWILIO_PHONE_NUMBER"),
-            to=to_number,
-            body=message
-        )
-    except Exception as e: print(f"❌ SMS Fail: {e}")
-
 def generate_audio(text, filename):
     try:
+        # Check if characters are remaining/API is valid
         audio_generator = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text,
             model_id="eleven_turbo_v2_5"
         )
+        
         file_path = f"static/{filename}.mp3"
         with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
+        
+        print(f"✅ ElevenLabs Success: {file_path}")
         return True
     except Exception as e:
+        # This will show you the EXACT error in Railway Logs (e.g., 401 Unauthorized or 429 Out of Quota)
         print(f"❌ ElevenLabs Error: {e}")
         return False
 
@@ -104,34 +93,25 @@ def get_ai_response(user_input, caller_number):
                     "date": extracted.get("date"),
                     "time": extracted.get("time"),
                     "guests": extracted.get("guests"),
-                    "notes": extracted.get("notes"), # Saved to admin panel
+                    "notes": extracted.get("notes"),
                     "contact": caller_number,
                     "status": "Confirmed" if res.get("is_complete") else "In-Progress"
                 }},
                 upsert=True
             )
-            if res.get("is_complete"):
-                send_sms(caller_number, f"Hi {extracted['name']}! Your booking at The Velvet Bean for {extracted['date']} at {extracted['time']} is confirmed.")
         return res
     except Exception as e:
-        return {"reply": "I'm sorry, I missed that. Could you say it again?", "is_complete": False}
+        print(f"AI Error: {e}")
+        return {"reply": "I'm sorry, I missed that.", "is_complete": False}
 
-# --- ROUTES ---
-
-@app.get("/", response_class=HTMLResponse)
-async def home_page():
-    with open("home.html") as f: return f.read()
-
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_page():
-    with open("index.html") as f: return f.read()
-
-# --- TWILIO VOICE LOGIC ---
+# --- TWILIO ROUTES ---
 
 @app.post("/voice")
 async def voice_start(request: Request):
     global chat_history
     chat_history = [get_system_prompt()]
+    
+    # FORCE HTTPS - Critical for Twilio to play audio from Railway
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     
     response = VoiceResponse()
@@ -142,7 +122,7 @@ async def voice_start(request: Request):
     else:
         response.say(greeting)
     
-    # Increased timeout to 1.2s so it doesn't cut people off
+    # timeout 1.2 and enhanced=True for better listening
     gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2', enhanced=True)
     response.append(gather)
     return HTMLResponse(content=str(response), media_type="application/xml")
@@ -153,7 +133,7 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     response = VoiceResponse()
 
     if not SpeechResult:
-        response.say("I'm sorry, I'm still listening. What were the details?")
+        response.say("I didn't catch that. Could you repeat it?")
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -165,17 +145,25 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     else:
         response.say(ai_decision['reply'])
 
-    # Continuous loop until AI sets is_complete to True
     if not ai_decision.get("is_complete"):
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2'))
     else:
-        response.hangup() # Ends call gracefully after goodbye
+        response.hangup()
     
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.get("/static/{file_name}")
 async def serve_static(file_name: str):
     return FileResponse(f"static/{file_name}")
+
+# --- OTHER ROUTES ---
+@app.get("/", response_class=HTMLResponse)
+async def home_page():
+    with open("home.html") as f: return f.read()
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    with open("index.html") as f: return f.read()
 
 @app.get("/api/bookings")
 async def get_bookings():
