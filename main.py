@@ -35,27 +35,20 @@ def get_system_prompt():
         "content": f"""You are Jessica, the professional concierge at 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
         
-        GOAL: You MUST collect: 1. Name, 2. Date, 3. Time, 4. Number of Guests.
-        NOTES: If the guest mentions any special requirements (window seat, anniversary, allergies, etc.), 
-        you MUST capture these exactly in the 'notes' field for the admin panel.
+        GOAL: Collect Name, Date (include day), Time, and Number of Guests.
+        NOTES: Capture ANY special requirements (e.g. window seat, anniversary) in 'notes'.
         
         RULES:
-        - Do NOT end the call until you have captured Name, Date, Time, and Guests.
-        - Once all info is gathered, summarize the booking details clearly.
-        - End with a warm, professional 'Goodbye'.
-        - Only set 'is_complete' to true AFTER you have spoken your final goodbye.
+        - DO NOT finish the call until you have: Name, Date, Time, and Guests.
+        - You must confirm all details back to the guest at the end.
+        - Say a clear 'Goodbye' only when everything is done.
+        - Only set 'is_complete' to true AFTER your final goodbye sentence.
         
-        JSON ONLY FORMAT:
+        JSON STRUCTURE:
         {{
-            "reply": "your verbal response here",
+            "reply": "verbal response",
             "is_complete": false,
-            "data": {{
-                "name": "null", 
-                "date": "null", 
-                "time": "null", 
-                "guests": "null",
-                "notes": "null"
-            }}
+            "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null", "notes": "null"}}
         }}"""
     }
 
@@ -63,22 +56,17 @@ def get_system_prompt():
 
 def generate_audio(text, filename):
     try:
-        # NOTE: If using Railway, ElevenLabs Free Tier may continue to return 401. 
-        # A paid Starter plan ($1) is often required to bypass cloud IP blocking.
         audio_generator = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text,
             model_id="eleven_turbo_v2_5"
         )
-        
         file_path = f"static/{filename}.mp3"
         with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
-        
-        print(f"✅ ElevenLabs Audio Created: {file_path}")
         return True
     except Exception as e:
-        print(f"❌ ElevenLabs API Error: {e}")
+        print(f"❌ ElevenLabs Failed (Jessica Voice Disabled): {e}")
         return False
 
 def get_ai_response(user_input, caller_number):
@@ -93,13 +81,13 @@ def get_ai_response(user_input, caller_number):
         chat_history.append({"role": "assistant", "content": res['reply']})
         
         extracted = res.get("data", {})
-        if extracted.get("name") != "null":
-            # Saves Name, Date, Time, Guests, AND extra Requirements to 'notes'
+        if extracted.get("name") != "null" or extracted.get("date") != "null":
             db.bookings.update_one(
                 {"contact": caller_number},
                 {"$set": {
                     "name": extracted.get("name"),
                     "date": extracted.get("date"),
+                    "day": extracted.get("day"),
                     "time": extracted.get("time"),
                     "guests": extracted.get("guests"),
                     "notes": extracted.get("notes"),
@@ -110,7 +98,7 @@ def get_ai_response(user_input, caller_number):
             )
         return res
     except Exception as e:
-        print(f"Groq Error: {e}")
+        print(f"AI/DB Error: {e}")
         return {"reply": "I'm sorry, I missed that. Could you repeat it?", "is_complete": False}
 
 # --- TWILIO ROUTES ---
@@ -119,8 +107,6 @@ def get_ai_response(user_input, caller_number):
 async def voice_start(request: Request):
     global chat_history
     chat_history = [get_system_prompt()]
-    
-    # Force HTTPS to ensure Twilio can access the hosted audio files
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     
     response = VoiceResponse()
@@ -129,9 +115,9 @@ async def voice_start(request: Request):
     if generate_audio(greeting, "greeting"):
         response.play(f"{base_url}/static/greeting.mp3")
     else:
-        response.say(greeting)
+        # Fail-safe voice if ElevenLabs is blocked
+        response.say(greeting, voice='Polly.Aditi')
     
-    # Increased timeout (1.5s) and 'enhanced' mode to prevent cutting off the guest
     gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5', enhanced=True)
     response.append(gather)
     return HTMLResponse(content=str(response), media_type="application/xml")
@@ -141,35 +127,34 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
 
+    # If the user stayed silent
     if not SpeechResult:
-        response.say("I'm sorry, I'm still listening. What were the details for the booking?")
+        response.say("I'm sorry, I'm still here. Could you give me the details for the booking?")
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     ai_decision = get_ai_response(SpeechResult, From)
     filename = f"reply_{int(time.time())}"
     
+    # Try Jessica, fallback to Aditi (Polly) if ElevenLabs blocks us
     if generate_audio(ai_decision['reply'], filename):
         response.play(f"{base_url}/static/{filename}.mp3")
     else:
-        response.say(ai_decision['reply'])
+        response.say(ai_decision['reply'], voice='Polly.Aditi')
 
-    # Only hangs up if AI explicitly says goodbye and sets complete
-    if not ai_decision.get("is_complete"):
-        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
-    else:
+    # THE FIX: Only hang up if AI explicitly marks call as finished
+    if ai_decision.get("is_complete") is True:
         response.hangup()
+    else:
+        # Re-attach Gather so Jessica keeps listening
+        gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5', enhanced=True)
+        response.append(gather)
     
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.get("/static/{file_name}")
 async def serve_static(file_name: str):
     return FileResponse(f"static/{file_name}")
-
-# --- OTHER ROUTES ---
-@app.get("/", response_class=HTMLResponse)
-async def home_page():
-    with open("home.html") as f: return f.read()
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
