@@ -11,8 +11,13 @@ from groq import Groq
 from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
 
+# Load variables from .env or Railway environment
 load_dotenv()
 app = FastAPI()
+
+# Ensure the 'static' directory exists to prevent crash during audio generation
+if not os.path.exists("static"):
+    os.makedirs("static")
 
 # CONNECTIONS
 mongo_client = MongoClient(os.getenv("MONGO_URI"))
@@ -21,7 +26,7 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# SYSTEM PROMPT FOR ADITYA'S REQUIREMENTS
+# SYSTEM PROMPT
 chat_history = [
     {
         "role": "system", 
@@ -73,7 +78,9 @@ def get_ai_response(user_input, caller_number):
             if res.get("is_complete"):
                 send_sms(caller_number, f"Hi {extracted['name']}! Your booking at The Velvet Bean for {extracted['date']} is confirmed.")
         return res
-    except: return {"reply": "Sorry, could you repeat that?", "is_complete": False}
+    except Exception as e:
+        print(f"Groq/DB Error: {e}")
+        return {"reply": "I'm having a little trouble hearing you. Could you repeat that?", "is_complete": False}
 
 def generate_audio(text, filename):
     try:
@@ -82,29 +89,28 @@ def generate_audio(text, filename):
             text=text,
             model_id="eleven_turbo_v2_5"
         )
-        # Ensure static folder exists
-        if not os.path.exists("static"):
-            os.makedirs("static")
-            
-        with open(f"static/{filename}.mp3", "wb") as f:
+        file_path = f"static/{filename}.mp3"
+        with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
         return True
-    except: return False
+    except Exception as e:
+        print(f"ElevenLabs Error: {e}")
+        return False
 
-# ROUTES
+# --- FRONTEND ROUTES ---
 
-# FIXED: Now returns the home.html content instead of plain text 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def home_page():
     with open("home.html") as f: 
-        return HTMLResponse(f.read())
+        return f.read()
 
-@app.get("/admin")
+@app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
     with open("index.html") as f: 
-        return HTMLResponse(f.read())
+        return f.read()
 
-# API ENDPOINTS
+# --- API ENDPOINTS ---
+
 @app.get("/api/settings")
 async def get_settings():
     settings = db.settings.find_one({"type": "bistro_rules"})
@@ -157,27 +163,48 @@ async def delete_booking(id: str):
         return {"status": "deleted"}
     return {"status": "not found"}
 
-# TWILIO VOICE
+# --- TWILIO VOICE LOGIC ---
+
 @app.post("/voice")
 async def voice_start(request: Request):
     global chat_history
-    chat_history = chat_history[:1]
+    chat_history = chat_history[:1] # Reset history for new call
     response = VoiceResponse()
-    greeting = "Hi! I'm Jessica. How can I help you today?"
+    greeting = "Hi! I'm Jessica from The Velvet Bean. How can I help you today?"
+    
+    # Generate audio for the initial greeting
     generate_audio(greeting, "greeting")
-    response.play(f"{str(request.base_url)}static/greeting.mp3")
-    response.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
+    
+    audio_url = f"{str(request.base_url).rstrip('/')}/static/greeting.mp3"
+    response.play(audio_url)
+    
+    # Listen for user input
+    gather = Gather(input='speech', action=f"{str(request.base_url).rstrip('/')}/respond", language='en-IN', speech_timeout='0.8')
+    response.append(gather)
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
-async def handle_response(request: Request, SpeechResult: str = Form(...), From: str = Form(...)):
+async def handle_response(request: Request, SpeechResult: str = Form(None), From: str = Form(...)):
+    if not SpeechResult:
+        response = VoiceResponse()
+        response.say("I'm sorry, I didn't catch that. Could you repeat it?")
+        response.append(Gather(input='speech', action=f"{str(request.base_url).rstrip('/')}/respond", language='en-IN', speech_timeout='0.8'))
+        return HTMLResponse(content=str(response), media_type="application/xml")
+
     ai_decision = get_ai_response(SpeechResult, From)
     filename = f"reply_{int(time.time())}"
+    
     response = VoiceResponse()
     if generate_audio(ai_decision['reply'], filename):
-        response.play(f"{str(request.base_url)}static/{filename}.mp3")
+        audio_url = f"{str(request.base_url).rstrip('/')}/static/{filename}.mp3"
+        response.play(audio_url)
+    else:
+        # Fallback to robotic voice if ElevenLabs fails
+        response.say(ai_decision['reply'])
+
     if not ai_decision.get("is_complete"):
-        response.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
+        response.append(Gather(input='speech', action=f"{str(request.base_url).rstrip('/')}/respond", language='en-IN', speech_timeout='0.8'))
+    
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.get("/static/{file_name}")
