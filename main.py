@@ -82,19 +82,58 @@ def generate_audio(text, filename):
             text=text,
             model_id="eleven_turbo_v2_5"
         )
+        # Ensure static folder exists
+        if not os.path.exists("static"):
+            os.makedirs("static")
+            
         with open(f"static/{filename}.mp3", "wb") as f:
             for chunk in audio_generator: f.write(chunk)
         return True
     except: return False
 
 # ROUTES
+
+# FIXED: Now returns the home.html content instead of plain text 
 @app.get("/")
 async def home_page():
-    return HTMLResponse("<h1>The Velvet Bean AI is Online</h1>")
+    with open("home.html") as f: 
+        return HTMLResponse(f.read())
 
 @app.get("/admin")
 async def admin_page():
-    with open("index.html") as f: return HTMLResponse(f.read())
+    with open("index.html") as f: 
+        return HTMLResponse(f.read())
+
+# API ENDPOINTS
+@app.get("/api/settings")
+async def get_settings():
+    settings = db.settings.find_one({"type": "bistro_rules"})
+    if settings:
+        settings["_id"] = str(settings["_id"])
+        return settings
+    return {"open_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], "open_time": 10, "close_time": 23}
+
+@app.post("/api/settings")
+async def save_settings(data: dict):
+    db.settings.update_one({"type": "bistro_rules"}, {"$set": data}, upsert=True)
+    return {"status": "success"}
+
+@app.get("/api/menu")
+async def get_menu():
+    menu = list(db.menu.find({}))
+    for m in menu: m["_id"] = str(m["_id"])
+    return menu
+
+@app.post("/api/menu")
+async def add_menu(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
+    db.menu.insert_one({"name": name, "price": price, "photo": photo})
+    return HTMLResponse("<script>window.location.href='/admin'</script>")
+
+@app.delete("/api/menu/{id}")
+async def delete_menu(id: str):
+    from bson import ObjectId
+    db.menu.delete_one({"_id": ObjectId(id)})
+    return {"status": "deleted"}
 
 @app.get("/api/bookings")
 async def get_bookings():
