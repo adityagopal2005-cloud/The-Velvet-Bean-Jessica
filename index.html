@@ -55,10 +55,8 @@
                             <thead>
                                 <tr class="text-[10px] uppercase font-bold text-gray-500 bg-black/40">
                                     <th class="p-5">Name</th>
-                                    <th class="p-5">Date</th>
-                                    <th class="p-5">Day</th>
-                                    <th class="p-5">Time</th>
-                                    <th class="p-5">Status</th>
+                                    <th class="p-5">Booking Details</th> <th class="p-5">Time</th>
+                                    <th class="p-5">Guests</th> <th class="p-5">Status</th>
                                     <th class="p-5">Notes</th>
                                     <th class="p-5">Contact</th>
                                     <th class="p-5 text-right">Action</th>
@@ -80,7 +78,7 @@
     <script>
         const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
         let activeDays = [];
-        let isEditing = false; // Flag to pause auto-refresh while typing
+        let isEditing = false;
 
         async function init() {
             try {
@@ -124,16 +122,16 @@
         }
 
         async function loadData() {
-            if (isEditing) return; // Prevent overwriting notes while typing
+            if (isEditing) return;
 
             const bRes = await fetch('/api/bookings');
             const bookings = await bRes.json();
             document.getElementById('booking-table').innerHTML = bookings.map(b => `
                 <tr class="hover:bg-white/5 transition group text-sm">
                     <td class="p-5 font-bold">${b.name || 'Unknown'}</td>
-                    <td class="p-5 text-gray-400 text-xs">${b.date || '---'}</td>
-                    <td class="p-5 text-gray-400 text-xs">${b.day || '---'}</td>
+                    <td class="p-5 text-gray-400 text-xs">${b.date || '---'}${b.day ? ', ' + b.day : ''}</td>
                     <td class="p-5 text-orange-400 font-mono text-xs font-bold">${b.time || '---'}</td>
+                    <td class="p-5 text-gray-400 text-xs font-bold">${b.guests || '---'}</td>
                     <td class="p-5">
                         <select onchange="updateRow('${b._id}', {status: this.value})" class="bg-black border border-white/10 rounded-md text-[10px] px-2 py-1 outline-none font-bold cursor-pointer">
                             <option value="In-Progress" ${b.status === 'In-Progress' ? 'selected' : ''}>Talking...</option>
@@ -177,14 +175,13 @@
                 headers: {'Content-Type': 'application/json'}, 
                 body: JSON.stringify(data) 
             });
-            // Don't call loadData here immediately to avoid jumping while typing
         }
 
         async function cancelBooking(id, name) {
             if(confirm(`Cancel reservation for ${name}? This sends a cancellation SMS.`)) {
-                const res = await fetch(`/api/bookings/${id}`, { method: 'DELETE' }); //
+                const res = await fetch(`/api/bookings/${id}`, { method: 'DELETE' });
                 if (res.ok) {
-                    loadData(); // Instant UI refresh
+                    loadData();
                 }
             }
         }
@@ -200,7 +197,7 @@
         document.getElementById('close-time').oninput = function() { document.getElementById('close-val').innerText = this.value; }
 
         init();
-        setInterval(loadData, 5000); // Live Sync every 5 seconds
+        setInterval(loadData, 5000);
     </script>
 </body>
 </html>
