@@ -2,141 +2,129 @@ import os
 import json
 import time
 from datetime import datetime
-from fastapi import FastAPI, Form, Request, Depends, HTTPException, status
+from fastapi import FastAPI, Form, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client as TwilioClient
 from pymongo import MongoClient
-from bson import ObjectId
 from groq import Groq 
 from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
 
 load_dotenv()
 app = FastAPI()
-security = HTTPBasic()
 
-# --- CONNECTIONS ---
+# CONNECTIONS
 mongo_client = MongoClient(os.getenv("MONGO_URI"))
 db = mongo_client["RestaurantDB"] 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# --- LOGIC: 10 ITEM SEEDER ---
-def seed_menu():
-    if db.menu.count_documents({}) == 0:
-        items = [
-            {"name": "Truffle Mac & Cheese", "price": "$18", "photo": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=2070"},
-            {"name": "Signature Velvet Latte", "price": "$7", "photo": "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=2070"},
-            {"name": "Wagyu Beef Sliders", "price": "$24", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=2070"},
-            {"name": "Avocado Burrata Toast", "price": "$16", "photo": "https://images.unsplash.com/photo-1525351484163-7529414344d8?q=80&w=2070"},
-            {"name": "Spicy Tuna Crispy Rice", "price": "$21", "photo": "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?q=80&w=2070"},
-            {"name": "Rooftop Berry Parfait", "price": "$12", "photo": "https://images.unsplash.com/photo-1488477181946-6428a0291777?q=80&w=2070"},
-            {"name": "Lobster Ravioli", "price": "$32", "photo": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2070"},
-            {"name": "Golden Saffron Risotto", "price": "$28", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=2070"},
-            {"name": "Artisanal Cheese Board", "price": "$26", "photo": "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?q=80&w=2070"},
-            {"name": "Midnight Chocolate Ganache", "price": "$14", "photo": "https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=2070"}
-        ]
-        db.menu.insert_many(items)
-seed_menu()
+# SYSTEM PROMPT FOR ADITYA'S REQUIREMENTS
+chat_history = [
+    {
+        "role": "system", 
+        "content": f"""You are Jessica from 'The Velvet Bean Bistro'. 
+        TODAY: {datetime.now().strftime('%A, %d %B %Y')}
+        RULES: 
+        1. Date format: '20th May 2026'
+        2. Identify the Weekday correctly.
+        JSON ONLY: {{"reply": "...", "is_complete": false, "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null"}}}}"""
+    }
+]
 
-# --- ADMIN AUTHENTICATION ---
-def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != "Aditya" or credentials.password != "092005":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
-
-# --- OPERATIONS CHECK ---
-def get_bistro_status():
-    rules = db.rules.find_one({"type": "hours"}) or {"days": "All Days"}
-    current_day = datetime.now().strftime('%A')
-    if rules['days'] == "Weekdays" and current_day in ["Saturday", "Sunday"]:
-        return False
-    if rules['days'] == "Weekends" and current_day not in ["Saturday", "Sunday"]:
-        return False
-    return True
-
-# --- HUMANIZED AI PROMPT ---
-def get_ai_response(user_input, caller_number):
-    is_open = get_bistro_status()
-    rules = db.rules.find_one({"type": "hours"}) or {"days": "All Days"}
-    
-    SYSTEM_PROMPT = f"""You are Jessica, the warm host at 'The Velvet Bean Bistro'. 
-    Current Day: {datetime.now().strftime('%A')}. 
-    Bistro Status: {'OPEN' if is_open else 'CLOSED'}.
-    Operating Days: {rules['days']}.
-    If the bistro is CLOSED, politely tell the guest we are only open on {rules['days']}.
-    If OPEN, collect Name, Date, Time, and Guests. Output JSON ONLY."""
-
+def send_sms(to_number, message):
     try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_input}]
-        completion = groq_client.chat.completions.create(
-            messages=messages, model="llama-3.3-70b-versatile", response_format={"type": "json_object"}
+        twilio_client.messages.create(
+            from_=os.getenv("TWILIO_PHONE_NUMBER"),
+            to=to_number,
+            body=message
         )
-        res = json.loads(completion.choices[0].message.content)
+    except Exception as e: print(f"❌ SMS Fail: {e}")
+
+# AI RESPONSE LOGIC
+def get_ai_response(user_input, caller_number):
+    chat_history.append({"role": "user", "content": user_input})
+    try:
+        chat_completion = groq_client.chat.completions.create(
+            messages=chat_history,
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"}
+        )
+        res = json.loads(chat_completion.choices[0].message.content)
+        chat_history.append({"role": "assistant", "content": res['reply']})
+        
+        extracted = res.get("data", {})
+        if extracted.get("name") != "null":
+            db.bookings.update_one(
+                {"contact": caller_number},
+                {"$set": {
+                    "name": extracted.get("name"),
+                    "date": extracted.get("date"),
+                    "day": extracted.get("day"),
+                    "time": extracted.get("time"),
+                    "guests": extracted.get("guests"),
+                    "contact": caller_number,
+                    "status": "Confirmed" if res.get("is_complete") else "In-Progress"
+                }},
+                upsert=True
+            )
+            if res.get("is_complete"):
+                send_sms(caller_number, f"Hi {extracted['name']}! Your booking at The Velvet Bean for {extracted['date']} is confirmed.")
         return res
-    except: return {"reply": "Sorry, I missed that.", "is_complete": False}
+    except: return {"reply": "Sorry, could you repeat that?", "is_complete": False}
 
-# --- WEB & API ROUTES ---
-@app.get("/", response_class=HTMLResponse)
-async def home_page():
-    with open("home.html") as f: return f.read()
-
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_page(username: str = Depends(authenticate)):
-    with open("index.html") as f: return f.read()
-
-@app.get("/api/bookings")
-async def get_bookings():
-    bookings = list(db.bookings.find().sort("timestamp", -1))
-    for b in bookings: b["_id"] = str(b["_id"])
-    return bookings
-
-@app.get("/api/menu")
-async def get_menu():
-    menu = list(db.menu.find({}))
-    for m in menu: m["_id"] = str(m["_id"])
-    return menu
-
-@app.post("/api/menu")
-async def add_menu_item(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
-    db.menu.insert_one({"name": name, "price": price, "photo": photo})
-    return HTMLResponse("<script>window.location='/admin'</script>")
-
-@app.delete("/api/menu/{id}")
-async def delete_menu_item(id: str):
-    db.menu.delete_one({"_id": ObjectId(id)})
-    return {"status": "deleted"}
-
-@app.get("/api/rules")
-async def get_rules():
-    return db.rules.find_one({"type": "hours"}) or {"days": "All Days", "open": "10", "close": "23"}
-
-@app.post("/api/rules")
-async def update_rules(data: dict):
-    db.rules.update_one({"type": "hours"}, {"$set": data}, upsert=True)
-    return {"status": "rules updated"}
-
-# --- VOICE ROUTES ---
 def generate_audio(text, filename):
     try:
-        audio = el_client.text_to_speech.convert(voice_id="cgSgspJ2msm6clMCkdW9", text=text, model_id="eleven_turbo_v2_5")
-        if not os.path.exists("static"): os.makedirs("static")
+        audio_generator = el_client.text_to_speech.convert(
+            voice_id="cgSgspJ2msm6clMCkdW9", 
+            text=text,
+            model_id="eleven_turbo_v2_5"
+        )
         with open(f"static/{filename}.mp3", "wb") as f:
-            for chunk in audio: f.write(chunk)
+            for chunk in audio_generator: f.write(chunk)
         return True
     except: return False
 
+# ROUTES
+@app.get("/")
+async def home_page():
+    return HTMLResponse("<h1>The Velvet Bean AI is Online</h1>")
+
+@app.get("/admin")
+async def admin_page():
+    with open("index.html") as f: return HTMLResponse(f.read())
+
+@app.get("/api/bookings")
+async def get_bookings():
+    bookings = list(db.bookings.find({}).sort("_id", -1))
+    for b in bookings: b["_id"] = str(b["_id"])
+    return bookings
+
+@app.patch("/api/bookings/{id}")
+async def update_booking(id: str, data: dict):
+    from bson import ObjectId
+    db.bookings.update_one({"_id": ObjectId(id)}, {"$set": data})
+    return {"status": "updated"}
+
+@app.delete("/api/bookings/{id}")
+async def delete_booking(id: str):
+    from bson import ObjectId
+    booking = db.bookings.find_one({"_id": ObjectId(id)})
+    if booking:
+        send_sms(booking['contact'], f"Hi {booking['name']}, your reservation at The Velvet Bean has been cancelled.")
+        db.bookings.delete_one({"_id": ObjectId(id)})
+        return {"status": "deleted"}
+    return {"status": "not found"}
+
+# TWILIO VOICE
 @app.post("/voice")
 async def voice_start(request: Request):
+    global chat_history
+    chat_history = chat_history[:1]
     response = VoiceResponse()
-    greeting = "The Velvet Bean Bistro, Jessica speaking!"
+    greeting = "Hi! I'm Jessica. How can I help you today?"
     generate_audio(greeting, "greeting")
     response.play(f"{str(request.base_url)}static/greeting.mp3")
     response.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
@@ -154,7 +142,8 @@ async def handle_response(request: Request, SpeechResult: str = Form(...), From:
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.get("/static/{file_name}")
-async def serve_static(file_name: str): return FileResponse(f"static/{file_name}")
+async def serve_static(file_name: str):
+    return FileResponse(f"static/{file_name}")
 
 if __name__ == "__main__":
     import uvicorn
