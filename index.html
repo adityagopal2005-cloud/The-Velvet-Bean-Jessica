@@ -1,140 +1,96 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Command Center | Velvet Bean</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; }
+        .glass-panel { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); }
+    </style>
 </head>
-<body class="bg-black text-white p-6 md:p-10 font-sans tracking-tight">
-    <div class="max-w-[1600px] mx-auto">
-        
-        <div class="flex justify-between items-end mb-12 border-b border-white/10 pb-8">
-            <div>
-                <h1 class="text-6xl font-black tracking-tighter">Command Center</h1>
-                <p class="text-gray-500 mt-2 uppercase text-[10px] tracking-[0.2em] font-bold">Bistro Operations & AI Control</p>
-            </div>
-            <a href="/" class="text-xs border border-white/20 px-6 py-2 rounded-full hover:bg-white hover:text-black transition font-bold uppercase tracking-widest">Live Site</a>
-        </div>
+<body class="p-10">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-5xl font-black mb-12 tracking-tighter">Command Center</h1>
 
-        <div class="grid grid-cols-1 xl:grid-cols-4 gap-8">
-            
-            <div class="xl:col-span-1 space-y-8">
-                <div class="bg-zinc-900/50 p-8 rounded-[2rem] border border-white/5 space-y-6">
-                    <h2 class="text-orange-500 font-black text-xs uppercase tracking-[0.2em]">Bistro Rules</h2>
-                    <div>
-                        <p class="text-[10px] text-gray-500 mb-2 font-bold uppercase">Time: <span id="open-val">10</span>:00 - <span id="close-val">23</span>:00</p>
-                        <input type="range" id="open-time" min="0" max="23" class="w-full accent-orange-500 mb-2">
-                        <input type="range" id="close-time" min="0" max="23" class="w-full accent-orange-500">
-                    </div>
-                    <button class="w-full bg-orange-500 text-black font-black py-4 rounded-2xl hover:bg-orange-400 transition uppercase text-xs">Update Rules</button>
-                </div>
-
-                <div class="bg-zinc-900/50 p-8 rounded-[2rem] border border-white/5">
-                    <h2 class="text-blue-500 font-black text-xs uppercase tracking-[0.2em] mb-6">New Menu Item</h2>
-                    <form action="/api/menu" method="post" class="space-y-3">
-                        <input name="name" placeholder="Name" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500">
-                        <input name="price" placeholder="Price" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500">
-                        <input name="photo" placeholder="Photo URL" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500">
-                        <button class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-500 transition uppercase text-xs">Add Item</button>
-                    </form>
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <div class="lg:col-span-1 space-y-6">
+                <div class="glass-panel p-6 rounded-3xl">
+                    <h2 class="text-blue-500 font-bold text-xs uppercase mb-4">New Menu Item</h2>
+                    <input id="m-name" placeholder="Name" class="w-full bg-black p-3 rounded-xl mb-2 text-sm border border-white/10">
+                    <input id="m-price" placeholder="Price" class="w-full bg-black p-3 rounded-xl mb-2 text-sm border border-white/10">
+                    <input id="m-photo" placeholder="Photo URL" class="w-full bg-black p-3 rounded-xl mb-4 text-sm border border-white/10">
+                    <button onclick="addMenuItem()" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs">Add Item</button>
                 </div>
             </div>
 
-            <div class="xl:col-span-3 space-y-8">
-                <div class="bg-zinc-900 rounded-[2rem] border border-white/5 overflow-hidden shadow-2xl">
-                    <div class="p-6 border-b border-white/5 bg-white/5 flex justify-between items-center">
-                        <h2 class="text-xs font-black uppercase tracking-widest">Live Guest Spreadsheet</h2>
-                        <span class="flex items-center gap-2 text-[10px] text-green-500 font-bold uppercase"><span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span> Server Active</span>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse min-w-[800px]">
-                            <thead>
-                                <tr class="text-[10px] uppercase font-bold text-gray-500 bg-black/40">
-                                    <th class="p-5">Name</th>
-                                    <th class="p-5">Date</th>
-                                    <th class="p-5">Day</th>
-                                    <th class="p-5">Time</th>
-                                    <th class="p-5">Status</th>
-                                    <th class="p-5">Notes</th>
-                                    <th class="p-5">Contact</th>
-                                    <th class="p-5 text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="booking-table" class="divide-y divide-white/5"></tbody>
-                        </table>
-                    </div>
+            <div class="lg:col-span-3 space-y-8">
+                <div class="glass-panel rounded-3xl overflow-hidden">
+                    <table class="w-full text-left">
+                        <thead class="bg-white/5 text-[10px] uppercase font-bold text-gray-500">
+                            <tr><th class="p-5">Guest</th><th class="p-5">Time</th><th class="p-5">Guests</th><th class="p-5 text-right">Action</th></tr>
+                        </thead>
+                        <tbody id="booking-table-body" class="divide-y divide-white/5"></tbody>
+                    </table>
                 </div>
 
-                <div class="bg-zinc-900 p-8 rounded-[2rem] border border-white/5">
-                    <h2 class="text-gray-500 font-black text-xs uppercase tracking-[0.2em] mb-6">Active Menu</h2>
-                    <div id="menu-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
-                </div>
+                <div id="menu-list" class="grid grid-cols-2 gap-4"></div>
             </div>
         </div>
     </div>
 
     <script>
-        let isEditing = false; 
-
         async function loadData() {
-            if (isEditing) return; 
-
-            // Load Bookings
             const bRes = await fetch('/api/bookings');
             const bookings = await bRes.json();
-            document.getElementById('booking-table').innerHTML = bookings.map(b => `
-                <tr class="hover:bg-white/5 transition group text-sm">
-                    <td class="p-5 font-bold">${b.name || 'Unknown'}</td>
-                    <td class="p-5 text-gray-400 text-xs">${b.date || '---'}</td>
-                    <td class="p-5 text-gray-400 text-xs">${b.day || '---'}</td>
-                    <td class="p-5 text-orange-400 font-mono text-xs font-bold">${b.time || '---'}</td>
-                    <td class="p-5">
-                        <select onchange="updateRow('${b._id}', {status: this.value})" class="bg-black border border-white/10 rounded-md text-[10px] px-2 py-1 outline-none font-bold">
-                            <option value="In-Progress" ${b.status === 'In-Progress' ? 'selected' : ''}>Talking...</option>
-                            <option value="Confirmed" ${b.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
-                        </select>
+            document.getElementById('booking-table-body').innerHTML = bookings.map(b => `
+                <tr class="text-sm">
+                    <td class="p-5 font-bold">${b.name}</td>
+                    <td class="p-5 text-orange-400 font-mono">${b.time}</td>
+                    <td class="p-5 text-gray-400">${b.guests}</td>
+                    <td class="p-5 text-right">
+                        <button onclick="deleteBooking('${b._id}')" class="text-red-500 font-bold uppercase text-[10px]">Cancel</button>
                     </td>
-                    <td class="p-5">
-                        <input type="text" value="${b.notes || ''}" onfocus="isEditing = true" onblur="isEditing = false; updateRow('${b._id}', {notes: this.value})" class="bg-transparent border-b border-transparent hover:border-white/20 focus:border-blue-500 outline-none w-full text-gray-500 transition italic">
-                    </td>
-                    <td class="p-5 text-gray-600 font-mono text-[10px]">${b.contact}</td>
-                    <td class="p-5 text-right"><button onclick="cancelBooking('${b._id}', '${b.name}')" class="text-red-500 text-[10px] font-black hover:underline opacity-100 transition">CANCEL</button></td>
                 </tr>
             `).join('');
 
-            // Load Menu Items
             const mRes = await fetch('/api/menu');
             const menu = await mRes.json();
             document.getElementById('menu-list').innerHTML = menu.map(m => `
-                <div class="flex items-center justify-between bg-black p-4 rounded-2xl border border-white/5">
-                    <div class="flex items-center gap-3">
-                        <img src="${m.photo}" class="w-10 h-10 rounded-lg object-cover shadow-lg">
-                        <div><p class="font-bold text-xs">${m.name}</p><p class="text-blue-400 text-[10px]">${m.price}</p></div>
+                <div class="glass-panel p-4 rounded-2xl flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <img src="${m.photo}" class="w-12 h-12 rounded-xl object-cover">
+                        <div><p class="font-bold text-xs">${m.name}</p><p class="text-blue-400 text-[10px] font-bold">${m.price}</p></div>
                     </div>
-                    <button onclick="deleteMenuItem('${m._id}')" class="text-red-500 text-[9px] font-bold hover:underline">REMOVE</button>
+                    <button onclick="deleteMenu('${m._id}')" class="text-gray-600 hover:text-red-500 text-xs">✕</button>
                 </div>
             `).join('');
         }
 
-        async function updateRow(id, data) {
-            await fetch(`/api/bookings/${id}`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+        async function addMenuItem() {
+            const fd = new FormData();
+            fd.append('name', document.getElementById('m-name').value);
+            fd.append('price', document.getElementById('m-price').value);
+            fd.append('photo', document.getElementById('m-photo').value);
+            await fetch('/api/menu', { method: 'POST', body: fd });
+            loadData();
         }
 
-        async function cancelBooking(id, name) {
-            if(confirm(`Cancel booking for ${name}?`)) {
+        async function deleteBooking(id) {
+            if(confirm("Delete this row?")) {
                 await fetch(`/api/bookings/${id}`, { method: 'DELETE' });
                 loadData();
             }
         }
 
-        async function deleteMenuItem(id) {
-            if(confirm(`Remove item from menu?`)) {
-                await fetch(`/api/menu/${id}`, { method: 'DELETE' });
-                loadData();
-            }
+        async function deleteMenu(id) {
+            await fetch(`/api/menu/${id}`, { method: 'DELETE' });
+            loadData();
         }
 
+        setInterval(loadData, 5000);
         loadData();
-        setInterval(loadData, 5000); 
     </script>
 </body>
 </html>

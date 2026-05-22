@@ -26,10 +26,27 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
+# --- AUTOMATIC MENU SEEDING ---
+def seed_menu():
+    if db.menu.count_documents({}) == 0:
+        items = [
+            {"name": "Truffle Mac & Cheese", "price": "$18", "photo": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=2070"},
+            {"name": "Signature Velvet Latte", "price": "$7", "photo": "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=2070"},
+            {"name": "Wagyu Beef Sliders", "price": "$24", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=2070"},
+            {"name": "Avocado Burrata Toast", "price": "$16", "photo": "https://images.unsplash.com/photo-1525351484163-7529414344d8?q=80&w=2070"},
+            {"name": "Spicy Tuna Crispy Rice", "price": "$21", "photo": "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?q=80&w=2070"},
+            {"name": "Rooftop Berry Parfait", "price": "$12", "photo": "https://images.unsplash.com/photo-1488477181946-6428a0291777?q=80&w=2070"},
+            {"name": "Lobster Ravioli", "price": "$32", "photo": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2070"},
+            {"name": "Golden Saffron Risotto", "price": "$28", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=2070"},
+            {"name": "Artisanal Cheese Board", "price": "$26", "photo": "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?q=80&w=2070"},
+            {"name": "Midnight Chocolate Ganache", "price": "$14", "photo": "https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=2070"}
+        ]
+        db.menu.insert_many(items)
+seed_menu()
+
 # --- GOOGLE SHEETS SETUP ---
 try:
     scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/drive']
-    # Looking for the file you just renamed
     creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
     gs_client = gspread.authorize(creds)
     sheet = gs_client.open_by_key("1eJXw0uQrqQRuWSBvUltN0Rq1pTpIGWtYr1K8AtTOqno").sheet1
@@ -39,26 +56,11 @@ except Exception as e:
 # --- ADMIN AUTH (Username: Aditya | Pass: 092005) ---
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != "Aditya" or credentials.password != "092005":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
     return credentials.username
 
 # --- JESSICA AI PROMPT ---
-SYSTEM_PROMPT = f"""You are Jessica, the host at 'The Velvet Bean'. 
-TODAY: {datetime.now().strftime('%A, %d %B %Y')}
-GOAL: Collect Name, Date, Time, and Number of Guests. 
-STYLE: Warm and human. If they give a detail, acknowledge it (e.g. 'Table for 4? Perfect!').
-JSON ONLY: {{"reply": "text", "is_complete": false, "data": {{"name": "null", "date": "null", "time": "null", "guests": "null"}}}}"""
-
-# --- CORE LOGIC ---
-def sync_to_sheets(data):
-    try:
-        row = [datetime.now().strftime("%Y-%m-%d %H:%M"), data['name'], data['date'], data['time'], data['guests'], data['contact']]
-        sheet.append_row(row)
-    except Exception as e: print(f"❌ Sheets Fail: {e}")
+SYSTEM_PROMPT = f"""You are Jessica, the host at 'The Velvet Bean'. Today: {datetime.now().strftime('%A, %d %B %Y')}. Collect Name, Date, Time, and Number of Guests. Output JSON ONLY."""
 
 def get_ai_response(user_input, caller_number):
     try:
@@ -74,9 +76,9 @@ def get_ai_response(user_input, caller_number):
                 "timestamp": datetime.now()
             }
             db.bookings.update_one({"contact": caller_number}, {"$set": booking}, upsert=True)
-            if res.get("is_complete"): 
-                sync_to_sheets(booking)
-                twilio_client.messages.create(from_=os.getenv("TWILIO_PHONE_NUMBER"), to=caller_number, body=f"Confirmed! Table for {ext['guests']} on {ext['date']} at {ext['time']}. See you soon!")
+            if res.get("is_complete"):
+                row = [datetime.now().strftime("%Y-%m-%d %H:%M"), ext['name'], ext['date'], ext['time'], ext['guests'], caller_number]
+                sheet.append_row(row)
         return res
     except: return {"reply": "Sorry, could you repeat that?", "is_complete": False}
 
@@ -91,10 +93,30 @@ async def admin(username: str = Depends(authenticate)):
 
 @app.get("/api/bookings")
 async def get_bookings():
-    # Returns 5 closest entries
-    bookings = list(db.bookings.find({"status": "Confirmed"}).sort("timestamp", -1).limit(5))
+    bookings = list(db.bookings.find().sort("timestamp", -1).limit(5))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
+
+@app.delete("/api/bookings/{id}")
+async def delete_booking(id: str):
+    db.bookings.delete_one({"_id": ObjectId(id)})
+    return {"status": "deleted"}
+
+@app.get("/api/menu")
+async def get_menu():
+    items = list(db.menu.find())
+    for i in items: i["_id"] = str(i["_id"])
+    return items
+
+@app.post("/api/menu")
+async def add_menu(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
+    db.menu.insert_one({"name": name, "price": price, "photo": photo})
+    return {"status": "added"}
+
+@app.delete("/api/menu/{id}")
+async def delete_menu(id: str):
+    db.menu.delete_one({"_id": ObjectId(id)})
+    return {"status": "deleted"}
 
 # --- VOICE LOGIC ---
 def gen_audio(text, fname):
@@ -109,7 +131,7 @@ def gen_audio(text, fname):
 @app.post("/voice")
 async def voice_start(request: Request):
     response = VoiceResponse()
-    greeting = "The Velvet Bean, Jessica speaking! How can I help you today?"
+    greeting = "Velvet Bean, Jessica speaking!"
     gen_audio(greeting, "greeting")
     response.play(f"{str(request.base_url)}static/greeting.mp3")
     response.append(Gather(input='speech', action=f"{str(request.base_url)}respond", language='en-IN', speech_timeout='0.8'))
