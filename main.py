@@ -32,31 +32,53 @@ chat_history = []
 def get_system_prompt():
     return {
         "role": "system", 
-        "content": f"""You are Jessica from 'The Velvet Bean Bistro'. 
+        "content": f"""You are Jessica, the professional concierge at 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
-        RULES: 1. Date format: '20th May 2026' 2. Identify Weekday.
-        JSON ONLY: {{"reply": "...", "is_complete": false, "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null"}}}}"""
+        
+        YOUR GOAL: Collect all booking details politely.
+        REQUIRED INFO: 1. Name, 2. Date, 3. Time, 4. Number of Guests.
+        
+        RULES:
+        - Do NOT end the call until you have all 4 pieces of info (Name, Date, Time, Guests).
+        - If the guest mentions a special request (window seat, celebration, allergies), capture it in 'notes'.
+        - Once all info is collected, summarize the booking and say a warm 'Goodbye'. 
+        - Only set 'is_complete' to true AFTER you have said your final goodbye.
+        
+        JSON ONLY FORMAT:
+        {{
+            "reply": "your verbal response",
+            "is_complete": false,
+            "data": {{
+                "name": "null", 
+                "date": "null", 
+                "time": "null", 
+                "guests": "null",
+                "notes": "null"
+            }}
+        }}"""
     }
 
 # --- HELPER FUNCTIONS ---
 
+def send_sms(to_number, message):
+    try:
+        twilio_client.messages.create(
+            from_=os.getenv("TWILIO_PHONE_NUMBER"),
+            to=to_number,
+            body=message
+        )
+    except Exception as e: print(f"❌ SMS Fail: {e}")
+
 def generate_audio(text, filename):
     try:
-        if not os.getenv("ELEVENLABS_API_KEY"):
-            print("❌ ElevenLabs Key Missing")
-            return False
-
         audio_generator = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text,
             model_id="eleven_turbo_v2_5"
         )
-        
         file_path = f"static/{filename}.mp3"
         with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
-        
-        print(f"✅ Audio Created: {file_path}")
         return True
     except Exception as e:
         print(f"❌ ElevenLabs Error: {e}")
@@ -73,25 +95,28 @@ def get_ai_response(user_input, caller_number):
         res = json.loads(chat_completion.choices[0].message.content)
         chat_history.append({"role": "assistant", "content": res['reply']})
         
-        # Database extraction logic
         extracted = res.get("data", {})
         if extracted.get("name") != "null":
             db.bookings.update_one(
                 {"contact": caller_number},
                 {"$set": {
-                    "name": extracted.get("name"), "date": extracted.get("date"),
-                    "day": extracted.get("day"), "time": extracted.get("time"),
-                    "guests": extracted.get("guests"), "contact": caller_number,
+                    "name": extracted.get("name"),
+                    "date": extracted.get("date"),
+                    "time": extracted.get("time"),
+                    "guests": extracted.get("guests"),
+                    "notes": extracted.get("notes"), # Saved to admin panel
+                    "contact": caller_number,
                     "status": "Confirmed" if res.get("is_complete") else "In-Progress"
                 }},
                 upsert=True
             )
+            if res.get("is_complete"):
+                send_sms(caller_number, f"Hi {extracted['name']}! Your booking at The Velvet Bean for {extracted['date']} at {extracted['time']} is confirmed.")
         return res
     except Exception as e:
-        print(f"AI Error: {e}")
-        return {"reply": "I'm sorry, I didn't catch that.", "is_complete": False}
+        return {"reply": "I'm sorry, I missed that. Could you say it again?", "is_complete": False}
 
-# --- WEB ROUTES ---
+# --- ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def home_page():
@@ -101,26 +126,24 @@ async def home_page():
 async def admin_page():
     with open("index.html") as f: return f.read()
 
-# --- TWILIO AI VOICE LOGIC ---
+# --- TWILIO VOICE LOGIC ---
 
 @app.post("/voice")
 async def voice_start(request: Request):
     global chat_history
     chat_history = [get_system_prompt()]
-    
-    # Corrected base_url logic for Railway
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     
     response = VoiceResponse()
-    greeting = "Hi! I'm Jessica from The Velvet Bean. How can I help you today?"
+    greeting = "Welcome to The Velvet Bean. This is Jessica. How can I help you with your reservation today?"
     
-    # FIXED: Audio generation happens first, then we use the known filename 'greeting'
     if generate_audio(greeting, "greeting"):
         response.play(f"{base_url}/static/greeting.mp3")
     else:
         response.say(greeting)
     
-    gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='0.8')
+    # Increased timeout to 1.2s so it doesn't cut people off
+    gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2', enhanced=True)
     response.append(gather)
     return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -130,12 +153,11 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     response = VoiceResponse()
 
     if not SpeechResult:
-        response.say("I'm sorry, I didn't hear anything.")
-        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='0.8'))
+        response.say("I'm sorry, I'm still listening. What were the details?")
+        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     ai_decision = get_ai_response(SpeechResult, From)
-    # Generate unique filename using timestamp
     filename = f"reply_{int(time.time())}"
     
     if generate_audio(ai_decision['reply'], filename):
@@ -143,8 +165,11 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     else:
         response.say(ai_decision['reply'])
 
+    # Continuous loop until AI sets is_complete to True
     if not ai_decision.get("is_complete"):
-        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='0.8'))
+        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.2'))
+    else:
+        response.hangup() # Ends call gracefully after goodbye
     
     return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -152,7 +177,6 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
 async def serve_static(file_name: str):
     return FileResponse(f"static/{file_name}")
 
-# --- API (Simplified for brevity) ---
 @app.get("/api/bookings")
 async def get_bookings():
     bookings = list(db.bookings.find({}).sort("_id", -1))
