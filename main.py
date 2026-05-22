@@ -15,14 +15,14 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# CONNECTIONS
+# --- CONNECTIONS ---
 mongo_client = MongoClient(os.getenv("MONGO_URI"))
 db = mongo_client["RestaurantDB"] 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# AI SYSTEM PROMPT
+# --- AI SYSTEM PROMPT ---
 chat_history = [
     {
         "role": "system", 
@@ -42,9 +42,10 @@ def send_sms(to_number, message):
             to=to_number,
             body=message
         )
-    except Exception as e: print(f"❌ SMS Fail: {e}")
+    except Exception as e: 
+        print(f"❌ SMS Fail: {e}")
 
-# AI RESPONSE LOGIC
+# --- AI RESPONSE LOGIC ---
 def get_ai_response(user_input, caller_number):
     chat_history.append({"role": "user", "content": user_input})
     try:
@@ -74,7 +75,8 @@ def get_ai_response(user_input, caller_number):
             if res.get("is_complete"):
                 send_sms(caller_number, f"Hi {extracted['name']}! Your booking at The Velvet Bean for {extracted['date']} is confirmed.")
         return res
-    except: return {"reply": "Sorry, I missed that.", "is_complete": False}
+    except: 
+        return {"reply": "Sorry, I missed that.", "is_complete": False}
 
 def generate_audio(text, filename):
     try:
@@ -83,22 +85,34 @@ def generate_audio(text, filename):
             text=text,
             model_id="eleven_turbo_v2_5"
         )
+        # Ensure static folder exists
+        if not os.path.exists("static"):
+            os.makedirs("static")
         with open(f"static/{filename}.mp3", "wb") as f:
             for chunk in audio_generator: f.write(chunk)
         return True
-    except: return False
+    except: 
+        return False
 
 # --- WEB & ADMIN ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def home_page():
-    # This serves your main website (About, Menu, etc.)
-    with open("home.html") as f: return f.read()
+    """Serves your Bistro Website (About, Menu, etc.)"""
+    try:
+        with open("home.html") as f: 
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>home.html not found!</h1><p>Please ensure your bistro page is named home.html</p>"
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
-    # This serves your Command Center dashboard
-    with open("admin.html") as f: return f.read()
+    """Serves your Command Center dashboard"""
+    try:
+        with open("index.html") as f: 
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>index.html not found!</h1><p>Please ensure your dashboard page is named index.html</p>"
 
 # --- BOOKING API ---
 @app.get("/api/bookings")
@@ -131,7 +145,6 @@ async def get_menu():
 @app.post("/api/menu")
 async def add_menu_item(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
     db.menu.insert_one({"name": name, "price": price, "photo": photo})
-    # After adding, redirect back to the admin dashboard
     return HTMLResponse("<script>window.location='/admin'</script>")
 
 @app.delete("/api/menu/{id}")
@@ -143,7 +156,7 @@ async def delete_menu_item(id: str):
 @app.post("/voice")
 async def voice_start(request: Request):
     global chat_history
-    chat_history = chat_history[:1]
+    chat_history = chat_history[:1] # Reset history for new call
     response = VoiceResponse()
     greeting = "Hi! Welcome to The Velvet Bean. I'm Jessica. How can I help?"
     generate_audio(greeting, "greeting")
