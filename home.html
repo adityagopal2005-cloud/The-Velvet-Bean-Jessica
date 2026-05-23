@@ -10,111 +10,133 @@
         body { font-family: 'Inter', sans-serif; background: #050505; color: white; overflow-x: hidden; scroll-behavior: smooth; }
         .font-serif { font-family: 'Playfair Display', serif; }
         .parallax { background-attachment: fixed; background-size: cover; background-position: center; }
-        .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .reveal { opacity: 0; transform: translateY(40px); transition: all 1.2s ease; }
+        .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .reveal { opacity: 0; transform: translateY(50px); transition: all 1.5s cubic-bezier(0.16, 1, 0.3, 1); }
         .reveal.active { opacity: 1; transform: translateY(0); }
+        
+        /* Premium Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #050505; }
+        ::-webkit-scrollbar-thumb { background: #ea580c; border-radius: 10px; }
     </style>
 </head>
 <body>
 
-    <nav class="fixed w-full z-50 px-8 md:px-16 py-12 flex justify-between items-center">
-        <div class="text-2xl font-serif tracking-[0.3em] uppercase italic">Velvet Bean</div>
-        <div class="hidden md:flex space-x-12 text-[10px] uppercase tracking-[0.4em] font-bold text-gray-500">
-            <a href="#about" class="hover:text-white transition">The Space</a>
-            <a href="#menu" class="hover:text-white transition">The Taste</a>
-            <a href="/admin" class="text-orange-500">Concierge Login</a>
+    <nav class="fixed w-full z-50 px-10 md:px-20 py-12 flex justify-between items-center pointer-events-none">
+        <div class="text-3xl font-serif tracking-[0.4em] uppercase italic pointer-events-auto">Velvet Bean</div>
+        <div class="hidden md:flex space-x-16 text-[10px] uppercase tracking-[0.6em] font-bold text-gray-500 pointer-events-auto">
+            <a href="#about" class="hover:text-white transition duration-500">Ambiance</a>
+            <a href="#menu" class="hover:text-white transition duration-500">Menu</a>
+            <a href="/admin" class="text-orange-600 hover:text-orange-400">Terminal</a>
         </div>
     </nav>
 
-    <header class="h-screen flex flex-col items-center justify-center text-center px-6 parallax" style="background-image: linear-gradient(rgba(0,0,0,0.5), #050505), url('https://images.unsplash.com/photo-1533333484556-519358a7a052?q=80&w=2070');">
-        <span class="text-orange-400 uppercase tracking-[0.8em] text-[10px] font-bold mb-8">Above the Jaipur Skyline</span>
-        <h1 class="text-7xl md:text-[11rem] font-serif tracking-tighter leading-[0.8] italic mb-12">Pure <br> Elegance.</h1>
-        <a href="tel:+18782907611" class="glass px-16 py-6 rounded-full text-xs font-bold uppercase tracking-[0.3em] hover:bg-white hover:text-black transition-all duration-700 shadow-2xl">
-            Book via AI Concierge
-        </a>
+    <header class="h-screen flex flex-col items-center justify-center text-center px-6 parallax relative" style="background-image: linear-gradient(rgba(0,0,0,0.6), #050505), url('https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=2070');">
+        <div class="reveal">
+            <span class="text-orange-500 uppercase tracking-[1em] text-[11px] font-black mb-10 block animate-pulse">Jaipur's Finest Rooftop</span>
+            <h1 class="text-8xl md:text-[14rem] font-serif tracking-tighter leading-[0.75] italic mb-16">Pure <br> Elegance.</h1>
+            <div class="flex flex-col md:flex-row gap-6 items-center justify-center">
+                <a href="tel:+18782907611" class="glass px-20 py-8 rounded-full text-xs font-bold uppercase tracking-[0.4em] hover:bg-white hover:text-black transition-all duration-1000 shadow-2xl">
+                    Call Jessica AI
+                </a>
+                <p id="op-hours" class="text-[10px] uppercase tracking-widest text-gray-500 font-bold border-l border-white/20 pl-8"></p>
+            </div>
+        </div>
+        <div class="absolute bottom-10 animate-bounce">
+            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 14l-7 7-7-7m14-8l-7 7-7-7"/></svg>
+        </div>
     </header>
 
-    <section id="about" class="py-40 px-6">
-        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-24 items-center">
+    <section id="about" class="py-60 px-6">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-32 items-center">
             <div class="reveal">
-                <h2 class="text-6xl font-serif leading-tight mb-10 italic">A Symphony of <br> Smoke and Spice.</h2>
-                <p class="text-gray-400 text-lg font-light leading-loose mb-10">
-                    Perched atop the pink city, The Velvet Bean is an sanctuary for the modern epicurean. Every plate is a brushstroke; every cocktail is a story of craft and time.
+                <h2 class="text-7xl font-serif leading-[1.1] mb-12 italic">A Sanctuary for <br> the Senses.</h2>
+                <p class="text-gray-400 text-xl font-light leading-relaxed mb-12 max-w-lg">
+                    Nestled among the clouds, The Velvet Bean combines avant-garde mixology with a culinary philosophy centered on fire, smoke, and Himalayan salt.
                 </p>
-                <div class="grid grid-cols-2 gap-8">
-                    <div><p class="text-orange-400 text-4xl font-serif">12k+</p><p class="text-[9px] uppercase tracking-widest text-gray-600 mt-2">Nights Hosted</p></div>
-                    <div><p class="text-orange-400 text-4xl font-serif">Michelin</p><p class="text-[9px] uppercase tracking-widest text-gray-600 mt-2">Star Standards</p></div>
+                <div class="flex gap-16">
+                    <div><p class="text-5xl font-serif text-orange-500 mb-2">01</p><p class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Private Atelier</p></div>
+                    <div><p class="text-5xl font-serif text-orange-500 mb-2">02</p><p class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Heated Rooftop</p></div>
                 </div>
             </div>
-            <div class="reveal relative">
-                <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=2070" class="rounded-[4rem] grayscale hover:grayscale-0 transition duration-1000 rotate-2">
+            <div class="reveal grid grid-cols-2 gap-4">
+                <div class="pt-20"><img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=800" class="rounded-[3rem] grayscale hover:grayscale-0 transition duration-1000 rotate-3"></div>
+                <div><img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=800" class="rounded-[3rem] grayscale hover:grayscale-0 transition duration-1000 -rotate-3"></div>
             </div>
         </div>
     </section>
 
-    <section class="py-20 px-6">
-        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 reveal">
-            <div class="h-[500px] rounded-[3rem] overflow-hidden group">
-                <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1000" class="w-full h-full object-cover transition duration-1000 group-hover:scale-110">
+    <section id="menu" class="py-40 bg-[#080808] px-6">
+        <div class="max-w-4xl mx-auto text-center mb-40 reveal">
+            <h2 class="text-8xl font-serif italic mb-8">The Tasting Room</h2>
+            <p class="text-orange-500 uppercase tracking-[0.8em] text-[11px] font-black">Signature Curations</p>
+        </div>
+        <div id="dynamic-menu" class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-x-32 gap-y-24">
             </div>
-            <div class="h-[500px] md:col-span-2 rounded-[3rem] overflow-hidden group">
-                <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070" class="w-full h-full object-cover transition duration-1000 group-hover:scale-110">
+    </section>
+
+    <section class="py-60 px-6 border-y border-white/5">
+        <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-20">
+            <div class="reveal text-center">
+                <p class="text-4xl font-serif italic mb-10 leading-relaxed text-gray-300">"The AI Jessica handle our complex group booking flawlessly. The Wagyu Sliders are life-changing."</p>
+                <span class="text-[9px] uppercase tracking-[0.4em] font-black text-orange-600">Arjun Mehta • Food Critic</span>
+            </div>
+            <div class="reveal text-center md:mt-20">
+                <p class="text-4xl font-serif italic mb-10 leading-relaxed text-gray-300">"Jaipur finally has a rooftop that rivals London. The cocktails are pure artistry."</p>
+                <span class="text-[9px] uppercase tracking-[0.4em] font-black text-orange-600">Sonia Ray • Vogue India</span>
+            </div>
+            <div class="reveal text-center">
+                <p class="text-4xl font-serif italic mb-10 leading-relaxed text-gray-300">"An absolute sanctuary. The Saffron Burrata is the best dish I've had this year."</p>
+                <span class="text-[9px] uppercase tracking-[0.4em] font-black text-orange-600">Vikram Singh • CEO</span>
             </div>
         </div>
     </section>
 
-    <section id="menu" class="py-40 bg-zinc-950 px-6">
-        <div class="max-w-4xl mx-auto text-center mb-32 reveal">
-            <h2 class="text-7xl font-serif mb-6 italic">Signature Menu</h2>
-            <p class="text-gray-600 uppercase tracking-[0.5em] text-[10px] font-bold">The Art of Fine Dining</p>
-        </div>
-        <div id="dynamic-menu" class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-x-20 gap-y-16">
-            </div>
-    </section>
-
-    <section class="py-40 border-y border-white/5 text-center px-6">
-        <div class="max-w-3xl mx-auto reveal">
-            <p class="text-3xl font-serif italic italic leading-relaxed">"The AI Jessica booked our table in seconds. The Rooftop view was stunning, but the Wagyu Sliders were the real highlight. Absolutely world-class."</p>
-            <p class="mt-12 text-[10px] uppercase tracking-[0.6em] text-gray-500 font-bold">— Riya Kapoor, Jaipur Life</p>
-        </div>
-    </section>
-
-    <footer class="py-32 text-center bg-black">
-        <div class="text-3xl font-serif mb-10 italic">Velvet Bean</div>
-        <p class="text-gray-600 tracking-[0.5em] uppercase text-[9px] mb-12">123 Skyline Terrace • Jaipur • Reservations: +1 (878) 290-7611</p>
-        <div class="flex justify-center space-x-12 text-[9px] text-gray-800 uppercase tracking-widest font-black">
-            <span>Instagram</span><span>Vogue</span><span>Michelin Guide</span>
+    <footer class="py-40 text-center bg-black">
+        <div class="text-5xl font-serif mb-12 italic tracking-widest">Velvet Bean</div>
+        <div id="footer-days" class="text-gray-600 tracking-[0.4em] uppercase text-[9px] mb-20 max-w-md mx-auto leading-loose"></div>
+        <div class="flex justify-center space-x-16 text-[10px] text-gray-800 uppercase tracking-widest font-black">
+            <span class="hover:text-white transition">Instagram</span>
+            <span class="hover:text-white transition">Michelin 2026</span>
+            <span class="hover:text-white transition">Vogue Living</span>
         </div>
     </footer>
 
     <script>
-        async function fetchMenu() {
-            const res = await fetch('/api/menu');
-            const items = await res.json();
+        async function loadSite() {
+            // Load Settings (Days/Hours)
+            const sRes = await fetch('/api/settings');
+            const sets = await sRes.json();
+            document.getElementById('op-hours').innerText = `Open ${sets.open} — ${sets.close}`;
+            document.getElementById('footer-days').innerText = `We welcome guests on ${sets.days.join(', ')}. Reservations are highly recommended via our AI Concierge.`;
+
+            // Load Menu (Dynamic Seeding)
+            const mRes = await fetch('/api/menu');
+            const items = await mRes.json();
             document.getElementById('dynamic-menu').innerHTML = items.map(item => `
-                <div class="group reveal flex items-center space-x-10 p-6 hover:bg-white/[0.02] rounded-[2.5rem] transition duration-700">
-                    <div class="w-40 h-40 flex-shrink-0 overflow-hidden rounded-3xl">
+                <div class="group reveal flex items-center gap-10 hover:bg-white/[0.01] p-10 rounded-[3rem] transition duration-1000">
+                    <div class="w-48 h-48 flex-shrink-0 overflow-hidden rounded-[2.5rem] shadow-2xl">
                         <img src="${item.photo}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-110 transition duration-1000">
                     </div>
                     <div class="flex-1">
-                        <div class="flex justify-between items-baseline border-b border-white/5 pb-4">
-                            <h3 class="text-2xl font-serif italic">${item.name}</h3>
+                        <div class="flex justify-between items-baseline border-b border-white/5 pb-6">
+                            <h3 class="text-3xl font-serif italic">${item.name}</h3>
                             <span class="text-orange-500 font-light text-sm">${item.price}</span>
                         </div>
-                        <p class="text-gray-600 text-[9px] mt-4 uppercase tracking-[0.2em] font-bold italic">Curated Selection</p>
+                        <p class="text-gray-600 text-[10px] mt-6 uppercase tracking-[0.3em] font-bold italic">Curated Artisanal Selection</p>
                     </div>
                 </div>
             `).join('');
-            initReveal();
+            
+            initObserver();
         }
 
-        function initReveal() {
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('active'); });
-            });
-            document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+        function initObserver() {
+            const obs = new IntersectionObserver((es) => es.forEach(e => { if(e.isIntersecting) e.target.classList.add('active'); }));
+            document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
         }
-        fetchMenu();
+
+        loadSite();
     </script>
 </body>
 </html>

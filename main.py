@@ -2,8 +2,8 @@ import os
 import json
 import uuid
 from datetime import datetime
-from fastapi import FastAPI, Form, Request, Body
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, Form, Request, Body, Depends, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client as TwilioClient
 from pymongo import MongoClient
@@ -16,7 +16,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 load_dotenv()
 app = FastAPI()
 
-# --- RESOURCES ---
+# --- INITIALIZATION ---
 try:
     mongo_client = MongoClient(os.getenv("MONGO_URI"))
     db = mongo_client["RestaurantDB"] 
@@ -24,18 +24,17 @@ try:
     el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
     twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
     
-    # Google Sheets Initialization
+    # Google Sheets Integration (RETAINED)
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
     sheets_client = gspread.authorize(creds)
-    # Ensure you have a sheet named 'Velvet Bean Reservations' shared with your client_email
     sheet = sheets_client.open("Velvet Bean Reservations").get_worksheet(0)
 except Exception as e:
-    print(f"Startup Warning (Check API Keys/Sheet Name): {e}")
+    print(f"Initialization Warning: {e}")
 
 call_sessions = {}
 
-# --- GOOGLE SHEETS SYNC LOGIC ---
+# --- HELPER: SYNC TO SHEETS (RETAINED) ---
 def sync_to_sheets(data):
     try:
         sheet.append_row([
@@ -45,40 +44,39 @@ def sync_to_sheets(data):
             data.get("time", "N/A"),
             data.get("guests", "N/A"),
             data.get("contact", "N/A"),
-            data.get("status", "Talking")
+            data.get("status", "Confirmed")
         ])
     except Exception as e:
-        print(f"Sync Error: {e}")
+        print(f"Sheet Sync Failed: {e}")
 
-# --- MENU SEEDING (10 Gourmet Items) ---
-def seed_menu():
+# --- SEEDING: 10 PREMIUM MENU ITEMS ---
+def seed_data():
     if db.menu.count_documents({}) == 0:
         items = [
-            {"name": "Truffle Mushroom Risotto", "price": "₹1,250", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=800"},
-            {"name": "Saffron Sea Bass", "price": "₹2,100", "photo": "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?q=80&w=800"},
-            {"name": "Aged Wagyu Sliders", "price": "₹1,850", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=800"},
-            {"name": "Burrata & Heirloom Tomato", "price": "₹950", "photo": "https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?q=80&w=800"},
-            {"name": "Smoked Octopus Tentacles", "price": "₹1,600", "photo": "https://images.unsplash.com/photo-1590577976322-3d2d6e2130ee?q=80&w=800"},
-            {"name": "Velvet Martini (Signature)", "price": "₹850", "photo": "https://images.unsplash.com/photo-1574096079513-d8259312b785?q=80&w=800"},
-            {"name": "Charred Asparagus & Feta", "price": "₹750", "photo": "https://images.unsplash.com/photo-1515412612224-48607c36caec?q=80&w=800"},
-            {"name": "Deconstructed Tiramisu", "price": "₹650", "photo": "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?q=80&w=800"},
-            {"name": "Himalayan Salt Tart", "price": "₹550", "photo": "https://images.unsplash.com/photo-1519915028121-7d3463d20b13?q=80&w=800"},
-            {"name": "Espresso Old Fashioned", "price": "₹900", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=800"}
+            {"name": "Gold-Leaf Wagyu Sliders", "price": "₹2,450", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=800"},
+            {"name": "Truffle Infused Lobster Roll", "price": "₹3,100", "photo": "https://images.unsplash.com/photo-1553618531-97aa2bc002fa?q=80&w=800"},
+            {"name": "Saffron Burrata Salad", "price": "₹1,250", "photo": "https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?q=80&w=800"},
+            {"name": "Smoked Octopus Carpaccio", "price": "₹1,850", "photo": "https://images.unsplash.com/photo-1590577976322-3d2d6e2130ee?q=80&w=800"},
+            {"name": "Champagne Porcini Risotto", "price": "₹1,900", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=800"},
+            {"name": "Deconstructed Pistachio Baklava", "price": "₹850", "photo": "https://images.unsplash.com/photo-1519915028121-7d3463d20b13?q=80&w=800"},
+            {"name": "Velvet Signature Martini", "price": "₹950", "photo": "https://images.unsplash.com/photo-1574096079513-d8259312b785?q=80&w=800"},
+            {"name": "Himalayan Salted Lamb Chops", "price": "₹2,800", "photo": "https://images.unsplash.com/photo-1603048297172-c92544798d5a?q=80&w=800"},
+            {"name": "Wild Mushroom Cappuccino", "price": "₹750", "photo": "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=800"},
+            {"name": "Espresso Gold Old Fashioned", "price": "₹1,100", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=800"}
         ]
         db.menu.insert_many(items)
+    
+    if db.settings.count_documents({}) == 0:
+        db.settings.insert_one({
+            "type": "operating_hours",
+            "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+            "open": "18:00",
+            "close": "23:00"
+        })
 
-seed_menu()
+seed_data()
 
-# --- VOICE LOGIC ---
-def get_system_prompt():
-    return {
-        "role": "system", 
-        "content": f"""You are Jessica, the concierge at 'The Velvet Bean'. 
-        DATE: {datetime.now().strftime('%A, %d %B %Y')}
-        COLLECT: Name, Date, Time, Pax. 
-        REPLY JSON: {{"reply": "string", "is_complete": bool, "data": {{"name": "str", "date": "str", "time": "str", "guests": "str"}}}}"""
-    }
-
+# --- VOICE LOGIC (RETAINED) ---
 def generate_audio(text, filename):
     try:
         audio = el_client.text_to_speech.convert(voice_id="cgSgspJ2msm6clMCkdW9", text=text, model_id="eleven_turbo_v2_5")
@@ -92,21 +90,17 @@ async def voice_start(request: Request):
     form_data = await request.form()
     caller = form_data.get("From", "unknown")
     session_id = f"sess_{uuid.uuid4().hex[:6]}"
+    db.bookings.insert_one({"session_id": session_id, "contact": caller, "status": "Talking...", "created_at": datetime.now()})
     
-    # UNIQUE ENTRY CREATION (Prevents overwriting previous calls)
-    db.bookings.insert_one({
-        "session_id": session_id, "contact": caller, "status": "Talking...", "created_at": datetime.now()
-    })
+    call_sessions[session_id] = [{"role": "system", "content": "You are Jessica, concierge at 'The Velvet Bean'. Collect Name, Date, Time, Pax. Reply in JSON: {'reply': 'str', 'is_complete': bool, 'data': {...}}"}]
     
-    call_sessions[session_id] = [get_system_prompt()]
     response = VoiceResponse()
-    msg = "Welcome to The Velvet Bean. I'm Jessica. How can I help you today?"
+    msg = "Welcome to the Velvet Bean. This is Jessica. How may I assist with your reservation?"
     fid = f"hi_{session_id}"
     if generate_audio(msg, fid): response.play(f"/static/{fid}.mp3")
-    else: response.say(msg, voice='Polly.Aditi')
+    else: response.say(msg)
     
-    gather = Gather(input='speech', action=f"/respond?sid={session_id}", language='en-IN', speech_timeout='1.2')
-    response.append(gather)
+    response.append(Gather(input='speech', action=f"/respond?sid={session_id}", language='en-IN', speech_timeout='1.2'))
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
@@ -116,14 +110,10 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         res.append(Gather(input='speech', action=f"/respond?sid={sid}", language='en-IN'))
         return HTMLResponse(content=str(res), media_type="application/xml")
 
-    # AI Logic
     call_sessions[sid].append({"role": "user", "content": SpeechResult})
-    completion = groq_client.chat.completions.create(
-        messages=call_sessions[sid], model="llama-3.3-70b-versatile", response_format={"type": "json_object"}
-    )
+    completion = groq_client.chat.completions.create(messages=call_sessions[sid], model="llama-3.3-70b-versatile", response_format={"type": "json_object"})
     ai_res = json.loads(completion.choices[0].message.content)
     
-    # Update unique entry
     data = ai_res.get("data", {})
     status = "Confirmed" if ai_res.get("is_complete") else "Talking..."
     db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": status}})
@@ -142,7 +132,22 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         response.hangup()
     return HTMLResponse(content=str(response), media_type="application/xml")
 
-# --- API ENDPOINTS ---
+# --- ADMIN & SETTINGS API ---
+@app.get("/api/settings")
+async def get_settings():
+    return db.settings.find_one({"type": "operating_hours"}, {"_id": 0})
+
+@app.post("/api/settings")
+async def update_settings(data: dict = Body(...)):
+    db.settings.update_one({"type": "operating_hours"}, {"$set": data})
+    return {"status": "Updated"}
+
+@app.post("/api/login")
+async def login(data: dict = Body(...)):
+    if data.get("username") == "Aditya" and data.get("password") == "092005":
+        return {"status": "success"}
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
 @app.get("/")
 async def home(): return HTMLResponse(open("home.html").read())
 
@@ -162,7 +167,7 @@ async def del_booking(id: str):
     return {"status": "ok"}
 
 @app.post("/api/sync")
-async def sync_all():
+async def sync_all_btn():
     bookings = list(db.bookings.find({"status": "Confirmed"}))
     for b in bookings: sync_to_sheets(b)
     return {"message": f"Successfully pushed {len(bookings)} entries to Google Sheets."}
@@ -185,7 +190,7 @@ async def del_menu(id: str):
     return {"status": "ok"}
 
 @app.get("/static/{file}")
-async def static(file: str): return FileResponse(f"static/{file}")
+async def static_file(file: str): return FileResponse(f"static/{file}")
 
 if __name__ == "__main__":
     import uvicorn
