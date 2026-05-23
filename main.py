@@ -24,19 +24,26 @@ try:
     el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
     twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 except Exception as e:
-    print(f"CRITICAL: Resource Connection Failed: {e}")
+    print(f"CRITICAL Resource Failure: {e}")
 
+# Persistent chat history (In a real app, use a DB for this)
 chat_history = []
 
 def get_system_prompt():
     return {
         "role": "system", 
-        "content": f"""You are Jessica from 'The Velvet Bean Bistro'. 
+        "content": f"""You are Jessica, the concierge at 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
         
         GOAL: Collect Name, Date, Day of the week, Time, and Number of Guests.
+        NOTES: If they have special requests, put them in 'notes'.
+        
+        RULES:
+        - NEVER end the call until you have Name, Date, Time, and Guests.
+        - Only set 'is_complete' to true AFTER you say 'Goodbye'.
+        
         JSON ONLY: {{
-            "reply": "...", 
+            "reply": "verbal response", 
             "is_complete": false, 
             "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null", "notes": "null"}}
         }}"""
@@ -53,8 +60,9 @@ def generate_audio(text, filename):
         with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
         return True
-    except:
-        return False # Fallback to Twilio voice
+    except Exception as e:
+        print(f"ElevenLabs Error: {e}")
+        return False
 
 def get_ai_response(user_input, caller_number):
     chat_history.append({"role": "user", "content": user_input})
@@ -68,7 +76,7 @@ def get_ai_response(user_input, caller_number):
         chat_history.append({"role": "assistant", "content": res['reply']})
         
         extracted = res.get("data", {})
-        if extracted.get("name") != "null" or extracted.get("date") != "null":
+        if extracted.get("name") != "null":
             db.bookings.update_one(
                 {"contact": caller_number},
                 {"$set": {
@@ -78,14 +86,20 @@ def get_ai_response(user_input, caller_number):
                     "time": extracted.get("time"),
                     "guests": extracted.get("guests"),
                     "notes": extracted.get("notes"),
-                    "contact": caller_number,
                     "status": "Confirmed" if res.get("is_complete") else "In-Progress"
                 }},
                 upsert=True
             )
         return res
     except:
-        return {"reply": "I'm sorry, could you say that again?", "is_complete": False}
+        return {"reply": "I'm sorry, I missed that.", "is_complete": False}
+
+# --- ROUTES ---
+
+@app.get("/", response_class=HTMLResponse)
+async def home_redirect():
+    # This stops the "Not Found" error at the base URL
+    return "<h1>Velvet Bean Bistro AI is Online</h1><p>Visit <a href='/admin'>/admin</a> for the dashboard.</p>"
 
 @app.post("/voice")
 async def voice_start(request: Request):
@@ -93,12 +107,12 @@ async def voice_start(request: Request):
     chat_history = [get_system_prompt()]
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
-    greeting = "Hi! I'm Jessica from The Velvet Bean. How can I help you today?"
+    msg = "Welcome to The Velvet Bean. I'm Jessica. How can I help you today?"
     
-    if generate_audio(greeting, "greeting"):
+    if generate_audio(msg, "greeting"):
         response.play(f"{base_url}/static/greeting.mp3")
     else:
-        response.say(greeting, voice='Polly.Aditi')
+        response.say(msg, voice='Polly.Aditi')
     
     response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
     return HTMLResponse(content=str(response), media_type="application/xml")
@@ -109,7 +123,7 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     response = VoiceResponse()
 
     if not SpeechResult:
-        response.say("I'm still here! What were those booking details?")
+        response.say("I'm sorry, I'm still listening. Can you tell me the booking details?", voice='Polly.Aditi')
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -144,5 +158,4 @@ async def serve_static(file_name: str):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
