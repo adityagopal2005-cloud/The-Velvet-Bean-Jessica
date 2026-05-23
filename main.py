@@ -2,7 +2,7 @@ import os
 import json
 import uuid
 from datetime import datetime
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Request, Body
 from fastapi.responses import HTMLResponse, FileResponse
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client as TwilioClient
@@ -13,6 +13,34 @@ from dotenv import load_dotenv
 
 load_dotenv()
 app = FastAPI()
+
+# --- RESOURCES ---
+try:
+    mongo_client = MongoClient(os.getenv("MONGO_URI"))
+    db = mongo_client["RestaurantDB"] 
+    groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+    twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+except Exception as e: print(f"Init Error: {e}")
+
+# SEEDING 10 PREMIUM ITEMS
+def seed_menu():
+    if db.menu.count_documents({}) == 0:
+        items = [
+            {"name": "Truffle Mushroom Risotto", "price": "₹1,250", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=500"},
+            {"name": "Saffron Sea Bass", "price": "₹2,100", "photo": "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?q=80&w=500"},
+            {"name": "Aged Wagyu Sliders", "price": "₹1,850", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=500"},
+            {"name": "Burrata & Heirloom Tomato", "price": "₹950", "photo": "https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?q=80&w=500"},
+            {"name": "Smoked Octopus Tentacles", "price": "₹1,600", "photo": "https://images.unsplash.com/photo-1590577976322-3d2d6e2130ee?q=80&w=500"},
+            {"name": "Velvet Martini (Signature)", "price": "₹850", "photo": "https://images.unsplash.com/photo-1574096079513-d8259312b785?q=80&w=500"},
+            {"name": "Charred Asparagus & Feta", "price": "₹750", "photo": "https://images.unsplash.com/photo-1515412612224-48607c36caec?q=80&w=500"},
+            {"name": "Deconstructed Tiramisu", "price": "₹650", "photo": "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?q=80&w=500"},
+            {"name": "Himalayan Salt Tart", "price": "₹550", "photo": "https://images.unsplash.com/photo-1519915028121-7d3463d20b13?q=80&w=500"},
+            {"name": "Espresso Old Fashioned", "price": "₹900", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=500"}
+        ]
+        db.menu.insert_many(items)
+
+seed_menu()
 
 # --- INITIALIZATION ---
 if not os.path.exists("static"):

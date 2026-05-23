@@ -6,3 +6,5 @@ groq
 elevenlabs
 python-dotenv
 python-multipart
+gspread
+oauth2client
