@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# --- INITIALIZATION ---
 if not os.path.exists("static"):
     os.makedirs("static")
 
@@ -32,27 +31,16 @@ chat_history = []
 def get_system_prompt():
     return {
         "role": "system", 
-        "content": f"""You are Jessica, the professional concierge at 'The Velvet Bean Bistro'. 
+        "content": f"""You are Jessica from 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
         
-        GOAL: Collect Name, Date (include day), Time, and Number of Guests.
-        NOTES: Capture ANY special requirements (e.g. window seat, anniversary) in 'notes'.
-        
-        RULES:
-        - DO NOT finish the call until you have: Name, Date, Time, and Guests.
-        - You must confirm all details back to the guest at the end.
-        - Say a clear 'Goodbye' only when everything is done.
-        - Only set 'is_complete' to true AFTER your final goodbye sentence.
-        
-        JSON STRUCTURE:
-        {{
-            "reply": "verbal response",
-            "is_complete": false,
+        GOAL: Collect Name, Date, Day of the week, Time, and Number of Guests.
+        JSON ONLY: {{
+            "reply": "...", 
+            "is_complete": false, 
             "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null", "notes": "null"}}
         }}"""
     }
-
-# --- HELPER FUNCTIONS ---
 
 def generate_audio(text, filename):
     try:
@@ -65,9 +53,8 @@ def generate_audio(text, filename):
         with open(file_path, "wb") as f:
             for chunk in audio_generator: f.write(chunk)
         return True
-    except Exception as e:
-        print(f"❌ ElevenLabs Failed (Jessica Voice Disabled): {e}")
-        return False
+    except:
+        return False # Fallback to Twilio voice
 
 def get_ai_response(user_input, caller_number):
     chat_history.append({"role": "user", "content": user_input})
@@ -97,29 +84,23 @@ def get_ai_response(user_input, caller_number):
                 upsert=True
             )
         return res
-    except Exception as e:
-        print(f"AI/DB Error: {e}")
-        return {"reply": "I'm sorry, I missed that. Could you repeat it?", "is_complete": False}
-
-# --- TWILIO ROUTES ---
+    except:
+        return {"reply": "I'm sorry, could you say that again?", "is_complete": False}
 
 @app.post("/voice")
 async def voice_start(request: Request):
     global chat_history
     chat_history = [get_system_prompt()]
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
-    
     response = VoiceResponse()
-    greeting = "Welcome to The Velvet Bean. I'm Jessica. How can I help you with your reservation today?"
+    greeting = "Hi! I'm Jessica from The Velvet Bean. How can I help you today?"
     
     if generate_audio(greeting, "greeting"):
         response.play(f"{base_url}/static/greeting.mp3")
     else:
-        # Fail-safe voice if ElevenLabs is blocked
         response.say(greeting, voice='Polly.Aditi')
     
-    gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5', enhanced=True)
-    response.append(gather)
+    response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
@@ -127,34 +108,25 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
 
-    # If the user stayed silent
     if not SpeechResult:
-        response.say("I'm sorry, I'm still here. Could you give me the details for the booking?")
+        response.say("I'm still here! What were those booking details?")
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     ai_decision = get_ai_response(SpeechResult, From)
     filename = f"reply_{int(time.time())}"
     
-    # Try Jessica, fallback to Aditi (Polly) if ElevenLabs blocks us
     if generate_audio(ai_decision['reply'], filename):
         response.play(f"{base_url}/static/{filename}.mp3")
     else:
         response.say(ai_decision['reply'], voice='Polly.Aditi')
 
-    # THE FIX: Only hang up if AI explicitly marks call as finished
-    if ai_decision.get("is_complete") is True:
-        response.hangup()
+    if not ai_decision.get("is_complete"):
+        response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
     else:
-        # Re-attach Gather so Jessica keeps listening
-        gather = Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5', enhanced=True)
-        response.append(gather)
+        response.hangup()
     
     return HTMLResponse(content=str(response), media_type="application/xml")
-
-@app.get("/static/{file_name}")
-async def serve_static(file_name: str):
-    return FileResponse(f"static/{file_name}")
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
@@ -165,6 +137,10 @@ async def get_bookings():
     bookings = list(db.bookings.find({}).sort("_id", -1))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
+
+@app.get("/static/{file_name}")
+async def serve_static(file_name: str):
+    return FileResponse(f"static/{file_name}")
 
 if __name__ == "__main__":
     import uvicorn
