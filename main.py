@@ -132,8 +132,7 @@ def get_system_prompt():
 def generate_audio(text, filename):
     """Converts AI text to speech using ElevenLabs Turbo v2 for minimal lag."""
     try:
-        # Using ElevenLabs API to generate high-fidelity voice. 
-        # Added a check to prevent crash if ElevenLabs responds with 401/Unauthorized.
+        # Added a robust check to catch the 401/Unauthorized error seen in your logs.
         audio = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text, 
@@ -148,6 +147,7 @@ def generate_audio(text, filename):
                 if chunk: f.write(chunk)
         return True
     except Exception as e:
+        # Log the specific error (e.g., 'Unusual activity detected' or 'Unauthorized')
         logger.error(f"ElevenLabs Generation Error: {e}")
         return False
 
@@ -173,13 +173,13 @@ async def voice_start(request: Request):
     msg = "Welcome to the Velvet Bean. I'm Jessica. How may I assist with your reservation today?"
     fid = f"hi_{session_id}"
     
-    # Fix for Railway/HTTPS environments
+    # Force base_url to use https to avoid Twilio 'Invalid Content-Type' errors on Railway.
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     
     if generate_audio(msg, fid):
         response.play(f"{base_url}/static/{fid}.mp3")
     else:
-        # Fallback to standard Twilio voice if ElevenLabs fails
+        # If ElevenLabs fails (as seen in log), fallback to default Twilio voice so call doesn't drop.
         response.say(msg)
     
     # Gather configuration: timeout 1.2s to prevent Jessica from cutting off natural pauses.
@@ -210,7 +210,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         
         call_sessions[sid].append({"role": "user", "content": SpeechResult})
         
-        # UPDATED: Using llama-3.1-8b-instant as llama3-8b-8192 is decommissioned.
+        # FIX: Swapped decommissioned 'llama3-8b-8192' for 'llama-3.1-8b-instant'.
         completion = groq_client.chat.completions.create(
             messages=call_sessions[sid], 
             model="llama-3.1-8b-instant", 
@@ -225,7 +225,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         ai_res = json.loads(raw_content)
         call_sessions[sid].append({"role": "assistant", "content": raw_content})
         
-        # Syncing captured data with MongoDB
+        # Sync captured data with MongoDB
         data = ai_res.get("data", {})
         is_done = ai_res.get("is_complete", False)
         current_status = "Confirmed" if is_done else "Talking..."
@@ -236,7 +236,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         if is_done:
             sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
 
-        # Audio response generation
+        # Audio response generation with error-catch fallback
         fid = f"rep_{uuid.uuid4().hex[:6]}"
         if generate_audio(ai_res['reply'], fid):
             response.play(f"{base_url}/static/{fid}.mp3")
@@ -244,7 +244,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
             response.say(ai_res['reply'])
         
         if not is_done:
-            # Continue the loop if details are missing
+            # Continue listening for missing reservation details
             response.append(Gather(
                 input='speech', 
                 action=f"{base_url}/respond?sid={sid}", 
@@ -253,14 +253,14 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
                 speech_model="numbers_and_commands"
             ))
         else:
-            # Clean up and hang up
+            # Clean up session and hang up gracefully
             call_sessions.pop(sid, None)
             response.hangup()
 
     except Exception as e:
         logger.error(f"Jessica Interactive Error: {e}")
-        # Soft-fail: Jessica remains in character but asks for a repeat
-        response.say("I'm listening, please go ahead.")
+        # Soft-fail recovery: Ask the user to continue rather than hanging up.
+        response.say("I'm sorry, I missed that. Could you please repeat?")
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
         
     return HTMLResponse(content=str(response), media_type="application/xml")
@@ -292,7 +292,7 @@ async def fetch_bookings():
     for b in bookings:
         b["_id"] = str(b["_id"])
         if "name" not in b or not b["name"]:
-            b["name"] = "Anonymous/Guest"
+            b["name"] = "Anonymous Guest"
     return bookings
 
 @app.delete("/api/bookings/{id}")
@@ -347,11 +347,3 @@ async def admin_page():
 async def serve_static(file: str): 
     """Static file server for generated reservation audio."""
     return FileResponse(f"static/{file}")
-
-# --- SERVER STARTUP ---
-if __name__ == "__main__":
-    import uvicorn
-    # Pre-flight check for directory existence
-    if not os.path.exists("static"):
-        os.makedirs("static")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
