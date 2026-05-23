@@ -160,21 +160,19 @@
                 .sort((a,b) => new Date(a.date || '2099') - new Date(b.date || '2099'))
                 .slice(0, 10);
             
-            document.getElementById('booking-feed').innerHTML = top10.map(b => `
-                <tr class="hover:bg-white/5 transition group">
-                    <td class="p-8 font-bold text-gray-200 text-xs">${b.name || 'Anonymous Guest'}</td>
-                    <td class="p-8 text-gray-400 text-xs">${b.date || 'Pending...'}</td>
-                    <td class="p-8 font-mono text-orange-400 text-xs font-bold">${b.time || '--:--'}</td>
-                    <td class="p-8 text-center text-xs font-bold text-gray-500">${b.guests || '-'}</td>
-                    <td class="p-8">
-                        <span class="px-3 py-1 bg-white/5 rounded-full text-[8px] font-black tracking-widest uppercase ${b.status === 'Confirmed' ? 'text-green-500' : 'text-orange-500'}">
-                            ${b.status}
-                        </span>
-                    </td>
-                    <td class="p-8 text-right">
-                        <button onclick="deleteBooking('${b._id}')" class="text-red-600 text-[10px] font-black tracking-widest hover:underline">REVOKE</button>
-                    </td>
-                </tr>
+            document.getElementById('menu-list').innerHTML = menu.map(m => `
+                <div class="bg-zinc-900 p-5 rounded-3xl flex justify-between items-center border border-white/5">
+                    <div class="flex items-center gap-4">
+                        <img src="${m.photo}" 
+                            onerror="this.src='https://via.placeholder.com/100?text=Error'"
+                            class="w-12 h-12 rounded-xl object-cover">
+                        <div>
+                            <p class="font-bold text-[10px] uppercase">${m.name}</p>
+                            <p class="text-blue-400 text-[9px]">${m.price}</p>
+                        </div>
+                    </div>
+                    <button onclick="delMenu('${m._id}')" class="text-red-500 font-bold text-[9px] hover:bg-red-500/10 p-2 rounded-lg">DELETE</button>
+                </div>
             `).join('');
 
             // 3. Fetch Menu Inventory

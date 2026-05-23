@@ -124,17 +124,16 @@
 
     <script>
         async function initializeSite() {
-            // 1. Fetch Operating Settings
+    // 1. Fetch Operating Settings
             const sRes = await fetch('/api/settings');
             const sets = await sRes.json();
             document.getElementById('live-hours').innerText = `Open Today: ${sets.open} — ${sets.close}`;
             document.getElementById('live-days').innerText = `Available on: ${sets.days.join(', ')}`;
 
-            // 2. Fetch and Render Menu Items (The Big 10)
+            // 2. Fetch and Render Menu Items
             const mRes = await fetch('/api/menu');
             const menuItems = await mRes.json();
             
-            // We empty the container first to prevent duplicates
             const container = document.getElementById('dynamic-menu-feed');
             container.innerHTML = "";
 
@@ -144,7 +143,9 @@
                 container.innerHTML = menuItems.map(item => `
                     <div class="group reveal flex items-center gap-10 hover:bg-white/[0.01] p-10 rounded-[3.5rem] transition duration-1000">
                         <div class="w-52 h-52 flex-shrink-0 overflow-hidden rounded-[3rem] shadow-2xl">
-                            <img src="${item.photo}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-110 transition duration-1000">
+                            <img src="${item.photo}" 
+                                onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600'"
+                                class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-110 transition duration-1000">
                         </div>
                         <div class="flex-1">
                             <div class="flex justify-between items-baseline border-b border-white/5 pb-8">

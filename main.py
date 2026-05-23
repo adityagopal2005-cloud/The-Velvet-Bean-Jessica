@@ -67,23 +67,24 @@ def sync_to_sheets(data):
 
 # --- DATABASE SEEDING: THE SIGNATURE 10 ---
 def seed_system_data():
-    """Ensures the menu and operating settings are populated on startup."""
-    # Seed 10 Premium Menu Items if the collection is empty
-    if db.menu.count_documents({}) == 0:
-        items = [
-            {"name": "24K Gold Wagyu Sliders", "price": "₹2,850", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=800"},
-            {"name": "Truffle Lobster Thermidor", "price": "₹3,400", "photo": "https://images.unsplash.com/photo-1553618531-97aa2bc002fa?q=80&w=800"},
-            {"name": "Saffron Infused Burrata", "price": "₹1,450", "photo": "https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?q=80&w=800"},
-            {"name": "Smoked Octopus Carpaccio", "price": "₹1,900", "photo": "https://images.unsplash.com/photo-1590577976322-3d2d6e2130ee?q=80&w=800"},
-            {"name": "Wild Mushroom Risotto", "price": "₹1,200", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=800"},
-            {"name": "Pistachio Baklava Tower", "price": "₹850", "photo": "https://images.unsplash.com/photo-1519915028121-7d3463d20b13?q=80&w=800"},
-            {"name": "The Velvet Martini", "price": "₹950", "photo": "https://images.unsplash.com/photo-1574096079513-d8259312b785?q=80&w=800"},
-            {"name": "Aged Himalayan Lamb Chops", "price": "₹2,600", "photo": "https://images.unsplash.com/photo-1603048297172-c92544798d5a?q=80&w=800"},
-            {"name": "Porcini Cappuccino Soup", "price": "₹750", "photo": "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=800"},
-            {"name": "Espresso Gold Old Fashioned", "price": "₹1,150", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=800"}
-        ]
-        db.menu.insert_many(items)
-        logger.info("Menu seeded with 10 items.")
+    # 1. NEW PREMIUM DATA
+    items = [
+        {"name": "24K Gold Wagyu Sliders", "price": "₹2,850", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=800"},
+        {"name": "Truffle Lobster Thermidor", "price": "₹3,400", "photo": "https://images.unsplash.com/photo-1553618531-97aa2bc002fa?q=80&w=800"},
+        {"name": "Saffron Infused Burrata", "price": "₹1,450", "photo": "https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?q=80&w=800"},
+        {"name": "Smoked Octopus Carpaccio", "price": "₹1,900", "photo": "https://images.unsplash.com/photo-1590577976322-3d2d6e2130ee?q=80&w=800"},
+        {"name": "Wild Mushroom Risotto", "price": "₹1,200", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=800"},
+        {"name": "Pistachio Baklava Tower", "price": "₹850", "photo": "https://images.unsplash.com/photo-1519915028121-7d3463d20b13?q=80&w=800"},
+        {"name": "The Velvet Martini", "price": "₹950", "photo": "https://images.unsplash.com/photo-1574096079513-d8259312b785?q=80&w=800"},
+        {"name": "Aged Himalayan Lamb Chops", "price": "₹2,600", "photo": "https://images.unsplash.com/photo-1603048297172-c92544798d5a?q=80&w=800"},
+        {"name": "Porcini Cappuccino Soup", "price": "₹750", "photo": "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=800"},
+        {"name": "Espresso Gold Old Fashioned", "price": "₹1,150", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=800"}
+    ]
+    
+    # 2. THE FORCE: Clear old items first so new links take effect
+    db.menu.delete_many({}) 
+    db.menu.insert_many(items)
+    print("Database re-seeded with premium images.")
 
     # Seed Default Operating Hours
     if db.settings.count_documents({"type": "operating_hours"}) == 0:
