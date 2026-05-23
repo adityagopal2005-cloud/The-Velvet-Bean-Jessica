@@ -98,7 +98,20 @@ def seed_system_data():
 
 seed_system_data()
 
+
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
+def get_system_prompt():
+    """Generates the fresh system prompt for the AI."""
+    content_str = (
+        f"You are Jessica, the professional concierge at 'The Velvet Bean'. "
+        f"TODAY: {datetime.now().strftime('%A, %d %B %Y')}. "
+        "Your goal is to collect: Name, Date, Time, and Number of Guests. "
+        "You MUST respond ONLY with a JSON object. "
+        "Format: {\"reply\": \"your spoken response\", \"is_complete\": true/false, "
+        "\"data\": {\"name\": \"str\", \"date\": \"str\", \"time\": \"str\", \"guests\": \"str\"}}"
+    )
+    return {"role": "system", "content": content_str}
+
 def generate_audio(text, filename):
     """Converts text to high-quality audio via ElevenLabs."""
     try:
@@ -107,6 +120,9 @@ def generate_audio(text, filename):
             text=text, 
             model_id="eleven_turbo_v2_5"
         )
+        # Ensure the directory exists right before saving
+        if not os.path.exists("static"):
+            os.makedirs("static")
         with open(f"static/{filename}.mp3", "wb") as f:
             for chunk in audio: f.write(chunk)
         return True
@@ -126,60 +142,82 @@ async def voice_start(request: Request):
         "session_id": session_id, "contact": caller, "status": "Talking...", "created_at": datetime.now()
     })
     
-    call_sessions[session_id] = [{
-        "role": "system", 
-        "content": "You are Jessica, concierge at 'The Velvet Bean'. Collect Name, Date, Time, Pax. Reply in JSON: {'reply': 'string', 'is_complete': bool, 'data': {...}}"
-    }]
+    # FIX: We now call get_system_prompt() to ensure it's a string, not a function reference
+    call_sessions[session_id] = [get_system_prompt()]
     
     response = VoiceResponse()
     msg = "Welcome to the Velvet Bean. I'm Jessica. How may I assist with your reservation?"
     fid = f"hi_{session_id}"
     
+    # Always include the base URL for Railway compatibility
+    base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+    
     if generate_audio(msg, fid):
-        response.play(f"/static/{fid}.mp3")
+        response.play(f"{base_url}/static/{fid}.mp3")
     else:
         response.say(msg)
     
-    response.append(Gather(input='speech', action=f"/respond?sid={session_id}", language='en-IN', speech_timeout='1.2'))
+    response.append(Gather(input='speech', action=f"{base_url}/respond?sid={session_id}", language='en-IN', speech_timeout='1.2'))
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
     """Handles the back-and-forth conversation with the AI."""
-    if not SpeechResult:
-        res = VoiceResponse()
-        res.append(Gather(input='speech', action=f"/respond?sid={sid}", language='en-IN'))
-        return HTMLResponse(content=str(res), media_type="application/xml")
-
-    call_sessions[sid].append({"role": "user", "content": SpeechResult})
-    
-    # Process with Groq (Llama 3.3)
-    completion = groq_client.chat.completions.create(
-        messages=call_sessions[sid], 
-        model="llama-3.3-70b-versatile", 
-        response_format={"type": "json_object"}
-    )
-    ai_res = json.loads(completion.choices[0].message.content)
-    
-    data = ai_res.get("data", {})
-    status = "Confirmed" if ai_res.get("is_complete") else "Talking..."
-    
-    # Sync to DB
-    db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": status}})
-    
-    # Sync to Sheets if finished
-    if ai_res.get("is_complete"):
-        sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
-
+    base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
-    fid = f"rep_{uuid.uuid4().hex[:6]}"
-    generate_audio(ai_res['reply'], fid)
-    response.play(f"/static/{fid}.mp3")
-    
-    if not ai_res.get("is_complete"):
-        response.append(Gather(input='speech', action=f"/respond?sid={sid}", language='en-IN'))
-    else:
-        response.hangup()
+
+    if not SpeechResult:
+        response.say("I'm sorry, I missed that. Could you please repeat the details?")
+        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
+        return HTMLResponse(content=str(response), media_type="application/xml")
+
+    try:
+        # Add user input to history
+        if sid not in call_sessions:
+            call_sessions[sid] = [get_system_prompt()]
+        
+        call_sessions[sid].append({"role": "user", "content": SpeechResult})
+        
+        # Process with Groq
+        completion = groq_client.chat.completions.create(
+            messages=call_sessions[sid], 
+            model="llama-3.3-70b-versatile", 
+            response_format={"type": "json_object"}
+        )
+        ai_res = json.loads(completion.choices[0].message.content)
+        
+        # Track AI response in history
+        call_sessions[sid].append({"role": "assistant", "content": completion.choices[0].message.content})
+        
+        data = ai_res.get("data", {})
+        is_done = ai_res.get("is_complete", False)
+        status = "Confirmed" if is_done else "Talking..."
+        
+        # Sync to DB
+        db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": status}})
+        
+        # Sync to Sheets if finished
+        if is_done:
+            sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
+
+        fid = f"rep_{uuid.uuid4().hex[:6]}"
+        if generate_audio(ai_res['reply'], fid):
+            response.play(f"{base_url}/static/{fid}.mp3")
+        else:
+            response.say(ai_res['reply'])
+        
+        if not is_done:
+            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
+        else:
+            # Cleanup session to save memory
+            call_sessions.pop(sid, None)
+            response.hangup()
+
+    except Exception as e:
+        logger.error(f"Jessica Response Error: {e}")
+        response.say("I apologize, but my connection was interrupted. Please tell me again?")
+        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN'))
+        
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 # --- AUTHENTICATION & SETTINGS API ---
@@ -253,7 +291,7 @@ async def serve_static(file: str):
 # --- SERVER START ---
 if __name__ == "__main__":
     import uvicorn
-    # Check if static folder exists for audio files
+    # Add these lines to ensure the server doesn't crash on the first call
     if not os.path.exists("static"):
         os.makedirs("static")
     uvicorn.run(app, host="0.0.0.0", port=8000)
