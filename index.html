@@ -1,95 +1,98 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Command Center | Velvet Bean</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-white p-6 md:p-16 font-sans tracking-tight">
+<body class="bg-black text-white p-6 md:p-16 font-sans">
     <div class="max-w-[1400px] mx-auto">
-        <div class="flex justify-between items-end mb-16 border-b border-white/5 pb-10">
+        <div class="flex justify-between items-end mb-16 border-b border-white/10 pb-10">
             <div>
-                <h1 class="text-5xl font-black tracking-tighter">Command Center</h1>
-                <p class="text-gray-500 mt-2 text-[10px] uppercase tracking-[0.5em] font-bold italic">AI Control & Management</p>
+                <h1 class="text-6xl font-black tracking-tighter italic">Command Center</h1>
+                <p class="text-orange-500 text-[10px] uppercase tracking-[0.5em] font-bold mt-2">Live Operations & Google Sync</p>
             </div>
-            <a href="/" class="text-[10px] border border-white/20 px-8 py-3 rounded-full hover:bg-white hover:text-black transition font-bold uppercase tracking-widest">Back to Gallery</a>
+            <div class="flex gap-4">
+                <button onclick="syncAll()" class="bg-green-600/10 text-green-500 border border-green-500/30 px-8 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-green-600 hover:text-white transition">Sync All to Sheets</button>
+                <a href="/" class="border border-white/20 px-8 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition">View Site</a>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 xl:grid-cols-4 gap-12">
-            <div class="xl:col-span-1 space-y-10">
-                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5">
-                    <h2 class="text-orange-500 font-black text-[10px] uppercase tracking-[0.3em] mb-8">Quick Settings</h2>
-                    <div class="space-y-4">
-                        <button onclick="saveSettings()" class="w-full bg-orange-500 text-black font-black py-4 rounded-2xl hover:bg-orange-400 transition uppercase text-xs">Sync All Data</button>
-                    </div>
-                </div>
-                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5">
-                    <h2 class="text-blue-500 font-black text-[10px] uppercase tracking-[0.3em] mb-8">Add Signature Item</h2>
+            <div class="xl:col-span-1 space-y-8">
+                <div class="bg-zinc-900/50 p-8 rounded-[2.5rem] border border-white/5">
+                    <h2 class="text-blue-500 font-bold text-[10px] uppercase tracking-[0.3em] mb-6">New Menu Item</h2>
                     <form action="/api/menu" method="post" class="space-y-3">
-                        <input name="name" placeholder="Name" class="w-full bg-black border border-white/5 p-4 rounded-xl text-xs outline-none">
-                        <input name="price" placeholder="Price (₹)" class="w-full bg-black border border-white/5 p-4 rounded-xl text-xs outline-none">
-                        <input name="photo" placeholder="Unsplash Photo URL" class="w-full bg-black border border-white/5 p-4 rounded-xl text-xs outline-none">
-                        <button class="w-full bg-blue-600 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest">Create Item</button>
+                        <input name="name" placeholder="Item Name" class="w-full bg-black border border-white/10 p-4 rounded-xl text-xs outline-none focus:border-blue-500">
+                        <input name="price" placeholder="Price (e.g. ₹850)" class="w-full bg-black border border-white/10 p-4 rounded-xl text-xs outline-none">
+                        <input name="photo" placeholder="Photo URL" class="w-full bg-black border border-white/10 p-4 rounded-xl text-xs outline-none">
+                        <button class="w-full bg-blue-600 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest">Add to Menu</button>
                     </form>
                 </div>
             </div>
 
             <div class="xl:col-span-3 space-y-12">
-                <div class="bg-zinc-900/80 rounded-[2.5rem] border border-white/5 overflow-hidden">
-                    <div class="p-8 border-b border-white/5 flex justify-between items-center">
-                        <h2 class="text-[10px] font-black uppercase tracking-[0.4em]">Upcoming Reservations (Top 10)</h2>
+                <div class="bg-zinc-900 rounded-[2.5rem] border border-white/5 overflow-hidden">
+                    <div class="p-8 border-b border-white/5 bg-white/5 flex justify-between">
+                        <h2 class="text-[10px] font-bold uppercase tracking-widest">Next 10 Reservations <span class="text-gray-500">(Sorted by Priority)</span></h2>
+                        <span class="text-green-500 animate-pulse text-[10px] font-bold uppercase">● Live AI Link</span>
                     </div>
                     <table class="w-full text-left">
-                        <thead class="text-[9px] uppercase font-bold text-gray-500 bg-black/50">
-                            <tr><th class="p-6">Guest</th><th class="p-6">Details</th><th class="p-6">Pax</th><th class="p-6">Status</th><th class="p-6 text-right">Action</th></tr>
+                        <thead class="bg-black text-[9px] uppercase text-gray-500 font-bold">
+                            <tr><th class="p-6">Guest</th><th class="p-6">Date</th><th class="p-6">Time</th><th class="p-6">Pax</th><th class="p-6">Status</th><th class="p-6 text-right">Action</th></tr>
                         </thead>
                         <tbody id="booking-table" class="divide-y divide-white/5"></tbody>
                     </table>
                 </div>
 
-                <div class="bg-zinc-900/40 p-10 rounded-[2.5rem] border border-white/5">
-                    <h2 class="text-gray-500 font-black text-[10px] uppercase tracking-[0.3em] mb-10">Active Menu Management</h2>
-                    <div id="menu-list" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
-                </div>
+                <div id="menu-list" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
             </div>
         </div>
     </div>
 
     <script>
+        async function syncAll() {
+            const res = await fetch('/api/sync', {method:'POST'});
+            const data = await res.json();
+            alert(data.message);
+        }
+
         async function loadData() {
             const bRes = await fetch('/api/bookings');
-            let bookings = await bRes.json();
+            const bookings = await bRes.json();
             
-            // PRIORITY SORTING: Show 10 upcoming reservations
-            const top10 = bookings
+            // INTELLIGENT SORTING: Sort by date and slice top 10
+            const displayList = bookings
                 .filter(b => b.status !== 'Cancelled')
-                .sort((a, b) => new Date(a.date || '9999') - new Date(b.date || '9999'))
+                .sort((a, b) => new Date(a.date || '9999-12-31') - new Date(b.date || '9999-12-31'))
                 .slice(0, 10);
 
-            document.getElementById('booking-table').innerHTML = top10.map(b => `
+            document.getElementById('booking-table').innerHTML = displayList.map(b => `
                 <tr class="hover:bg-white/5 transition text-xs">
-                    <td class="p-6 font-bold text-gray-200">${b.name || 'Anonymous'}</td>
-                    <td class="p-6 text-gray-500">${b.date || 'Pending'} @ ${b.time || '--:--'}</td>
-                    <td class="p-6 font-mono text-orange-400">${b.guests || '-'}</td>
-                    <td class="p-6"><span class="px-2 py-1 rounded-md bg-white/5 text-[9px]">${b.status}</span></td>
-                    <td class="p-6 text-right"><button onclick="deleteBooking('${b._id}')" class="text-red-500 font-bold text-[9px] hover:underline">REMOVE</button></td>
+                    <td class="p-6 font-bold text-white">${b.name || 'Anonymous'}</td>
+                    <td class="p-6 text-gray-400">${b.date || 'Pending'}</td>
+                    <td class="p-6 font-mono text-orange-400 font-bold">${b.time || '--:--'}</td>
+                    <td class="p-6 font-bold text-gray-400">${b.guests || '-'}</td>
+                    <td class="p-6"><span class="px-2 py-1 bg-white/5 rounded text-[9px] uppercase">${b.status}</span></td>
+                    <td class="p-6 text-right"><button onclick="delBooking('${b._id}')" class="text-red-500 font-bold hover:underline">REMOVE</button></td>
                 </tr>
             `).join('');
 
             const mRes = await fetch('/api/menu');
             const menu = await mRes.json();
             document.getElementById('menu-list').innerHTML = menu.map(m => `
-                <div class="flex items-center justify-between bg-black p-5 rounded-2xl border border-white/5">
+                <div class="bg-zinc-900 p-5 rounded-3xl flex justify-between items-center border border-white/5">
                     <div class="flex items-center gap-4">
-                        <img src="${m.photo}" class="w-10 h-10 rounded-lg object-cover grayscale">
-                        <div><p class="font-bold text-[10px] uppercase">${m.name}</p><p class="text-blue-400 text-[9px] mt-1">${m.price}</p></div>
+                        <img src="${m.photo}" class="w-10 h-10 rounded-xl object-cover grayscale">
+                        <div><p class="font-bold text-[10px] uppercase">${m.name}</p><p class="text-blue-400 text-[9px]">${m.price}</p></div>
                     </div>
-                    <button onclick="delMenu('${m._id}')" class="text-red-500 text-[9px] font-bold">DEL</button>
+                    <button onclick="delMenu('${m._id}')" class="text-red-500 font-bold text-[9px]">DEL</button>
                 </div>
             `).join('');
         }
 
-        async function deleteBooking(id) { await fetch(`/api/bookings/${id}`, { method: 'DELETE' }); loadData(); }
-        async function delMenu(id) { await fetch(`/api/menu/${id}`, { method: 'DELETE' }); loadData(); }
+        async function delBooking(id) { await fetch(`/api/bookings/${id}`, {method:'DELETE'}); loadData(); }
+        async function delMenu(id) { await fetch(`/api/menu/${id}`, {method:'DELETE'}); loadData(); }
         setInterval(loadData, 5000);
         loadData();
     </script>

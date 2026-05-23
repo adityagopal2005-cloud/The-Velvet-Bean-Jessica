@@ -7,111 +7,83 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@200;300;400;600&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; scroll-behavior: smooth; overflow-x: hidden; }
+        body { font-family: 'Inter', sans-serif; background: #050505; color: white; overflow-x: hidden; scroll-behavior: smooth; }
         .font-serif { font-family: 'Playfair Display', serif; }
-        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .parallax { background-attachment: fixed; background-position: center; background-size: cover; }
-        .hero-bg { background-image: linear-gradient(to bottom, rgba(0,0,0,0.3), #050505), url('https://images.unsplash.com/photo-1533333484556-519358a7a052?q=80&w=2070&auto=format&fit=crop'); }
-        .reveal { opacity: 0; transform: translateY(30px); transition: all 1s ease-out; }
+        .parallax { background-attachment: fixed; background-size: cover; background-position: center; }
+        .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .reveal { opacity: 0; transform: translateY(40px); transition: all 1.2s ease; }
         .reveal.active { opacity: 1; transform: translateY(0); }
     </style>
 </head>
 <body>
 
-    <nav class="fixed w-full z-50 px-6 md:px-16 py-10 flex justify-between items-center bg-gradient-to-b from-black/90 to-transparent">
-        <div class="text-3xl font-serif tracking-[0.2em] uppercase">Velvet Bean</div>
-        <div class="hidden md:flex space-x-12 text-[10px] uppercase tracking-[0.4em] text-gray-400 font-bold">
-            <a href="#about" class="hover:text-white transition">The Story</a>
-            <a href="#menu" class="hover:text-white transition">Signature Menu</a>
-            <a href="#ambiance" class="hover:text-white transition">Ambiance</a>
-            <a href="/admin" class="text-orange-500 border-b border-orange-500/30 pb-1">Concierge Portal</a>
+    <nav class="fixed w-full z-50 px-8 md:px-16 py-12 flex justify-between items-center">
+        <div class="text-2xl font-serif tracking-[0.3em] uppercase italic">Velvet Bean</div>
+        <div class="hidden md:flex space-x-12 text-[10px] uppercase tracking-[0.4em] font-bold text-gray-500">
+            <a href="#about" class="hover:text-white transition">The Space</a>
+            <a href="#menu" class="hover:text-white transition">The Taste</a>
+            <a href="/admin" class="text-orange-500">Concierge Login</a>
         </div>
     </nav>
 
-    <header class="parallax hero-bg h-screen flex flex-col items-center justify-center text-center px-6">
-        <div class="reveal active">
-            <span class="text-orange-400 uppercase tracking-[0.8em] text-xs font-bold mb-6 block">Michelin Inspired — Jaipur</span>
-            <h1 class="text-7xl md:text-[10rem] font-serif tracking-tighter leading-[0.85] mb-10 italic">Cuisine <br> & Clouds.</h1>
-            <p class="text-lg md:text-xl font-light text-gray-400 max-w-xl mx-auto mb-12 leading-relaxed">
-                A sanctuary above the skyline where artisanal mixology meets the poetry of fire and smoke.
-            </p>
-            <div class="flex flex-col md:flex-row gap-6 justify-center items-center">
-                <a href="tel:+18782907611" class="glass px-12 py-5 rounded-full text-sm font-bold tracking-widest hover:bg-white hover:text-black transition-all duration-700 shadow-2xl uppercase">
-                    Call Jessica AI
-                </a>
-                <a href="#menu" class="text-[10px] uppercase tracking-[0.3em] font-bold border-b border-white/20 pb-2 hover:border-white transition">View Signature Menu</a>
-            </div>
-        </div>
+    <header class="h-screen flex flex-col items-center justify-center text-center px-6 parallax" style="background-image: linear-gradient(rgba(0,0,0,0.5), #050505), url('https://images.unsplash.com/photo-1533333484556-519358a7a052?q=80&w=2070');">
+        <span class="text-orange-400 uppercase tracking-[0.8em] text-[10px] font-bold mb-8">Above the Jaipur Skyline</span>
+        <h1 class="text-7xl md:text-[11rem] font-serif tracking-tighter leading-[0.8] italic mb-12">Pure <br> Elegance.</h1>
+        <a href="tel:+18782907611" class="glass px-16 py-6 rounded-full text-xs font-bold uppercase tracking-[0.3em] hover:bg-white hover:text-black transition-all duration-700 shadow-2xl">
+            Book via AI Concierge
+        </a>
     </header>
 
-    <section id="about" class="py-40 px-6 bg-[#050505]">
-        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-20 items-center">
+    <section id="about" class="py-40 px-6">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-24 items-center">
             <div class="reveal">
-                <h2 class="text-5xl font-serif leading-tight mb-8">Where Time <br> Slows Down.</h2>
-                <p class="text-gray-400 text-lg font-light leading-loose mb-8">
-                    The Velvet Bean isn't just a bistro; it's a sensory invitation. Situated on the highest peak of Jaipur, we specialize in "Atmospheric Dining"—a fusion of high-altitude tranquility and bold, grounded flavors.
+                <h2 class="text-6xl font-serif leading-tight mb-10 italic">A Symphony of <br> Smoke and Spice.</h2>
+                <p class="text-gray-400 text-lg font-light leading-loose mb-10">
+                    Perched atop the pink city, The Velvet Bean is an sanctuary for the modern epicurean. Every plate is a brushstroke; every cocktail is a story of craft and time.
                 </p>
-                <div class="flex gap-10">
-                    <div><h4 class="text-orange-400 font-serif text-3xl">360°</h4><p class="text-[10px] uppercase tracking-widest text-gray-500">Skyline View</p></div>
-                    <div><h4 class="text-orange-400 font-serif text-3xl">120+</h4><p class="text-[10px] uppercase tracking-widest text-gray-500">Wine Labels</p></div>
+                <div class="grid grid-cols-2 gap-8">
+                    <div><p class="text-orange-400 text-4xl font-serif">12k+</p><p class="text-[9px] uppercase tracking-widest text-gray-600 mt-2">Nights Hosted</p></div>
+                    <div><p class="text-orange-400 text-4xl font-serif">Michelin</p><p class="text-[9px] uppercase tracking-widest text-gray-600 mt-2">Star Standards</p></div>
                 </div>
             </div>
             <div class="reveal relative">
-                <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=2070&auto=format&fit=crop" class="rounded-[3rem] shadow-2xl rotate-2 grayscale hover:grayscale-0 transition duration-1000">
-                <div class="absolute -bottom-10 -left-10 glass p-8 rounded-3xl hidden md:block">
-                    <p class="italic font-serif text-xl">"The best martini in Rajasthan."</p>
-                    <p class="text-[10px] uppercase tracking-widest mt-2 text-orange-400">— Vogue Living</p>
-                </div>
+                <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=2070" class="rounded-[4rem] grayscale hover:grayscale-0 transition duration-1000 rotate-2">
             </div>
         </div>
     </section>
 
-    <section id="menu" class="py-40 bg-[#080808] px-6">
-        <div class="max-w-4xl mx-auto text-center mb-32 reveal">
-            <h2 class="text-6xl font-serif mb-6 italic">Signature Selection</h2>
-            <p class="text-gray-500 uppercase tracking-[0.5em] text-xs font-bold">Curated for the Sophisticated Palate</p>
+    <section class="py-20 px-6">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 reveal">
+            <div class="h-[500px] rounded-[3rem] overflow-hidden group">
+                <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1000" class="w-full h-full object-cover transition duration-1000 group-hover:scale-110">
+            </div>
+            <div class="h-[500px] md:col-span-2 rounded-[3rem] overflow-hidden group">
+                <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070" class="w-full h-full object-cover transition duration-1000 group-hover:scale-110">
+            </div>
         </div>
-        
+    </section>
+
+    <section id="menu" class="py-40 bg-zinc-950 px-6">
+        <div class="max-w-4xl mx-auto text-center mb-32 reveal">
+            <h2 class="text-7xl font-serif mb-6 italic">Signature Menu</h2>
+            <p class="text-gray-600 uppercase tracking-[0.5em] text-[10px] font-bold">The Art of Fine Dining</p>
+        </div>
         <div id="dynamic-menu" class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-x-20 gap-y-16">
             </div>
     </section>
 
-    <section id="ambiance" class="py-40 px-6">
-        <div class="max-w-7xl mx-auto">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 reveal">
-                <div class="md:col-span-2 h-[600px] rounded-[3rem] overflow-hidden relative group">
-                    <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1974&auto=format&fit=crop" class="w-full h-full object-cover transition duration-1000 group-hover:scale-110">
-                    <div class="absolute inset-0 bg-black/40 p-12 flex flex-col justify-end">
-                        <h3 class="text-3xl font-serif italic">The Golden Hour Lounge</h3>
-                    </div>
-                </div>
-                <div class="h-[600px] rounded-[3rem] overflow-hidden relative group">
-                    <img src="https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=2069&auto=format&fit=crop" class="w-full h-full object-cover transition duration-1000 group-hover:scale-110">
-                </div>
-                <div class="h-[600px] rounded-[3rem] overflow-hidden relative group">
-                    <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover transition duration-1000 group-hover:scale-110">
-                </div>
-            </div>
+    <section class="py-40 border-y border-white/5 text-center px-6">
+        <div class="max-w-3xl mx-auto reveal">
+            <p class="text-3xl font-serif italic italic leading-relaxed">"The AI Jessica booked our table in seconds. The Rooftop view was stunning, but the Wagyu Sliders were the real highlight. Absolutely world-class."</p>
+            <p class="mt-12 text-[10px] uppercase tracking-[0.6em] text-gray-500 font-bold">— Riya Kapoor, Jaipur Life</p>
         </div>
     </section>
 
-    <section class="py-40 bg-zinc-950 border-y border-white/5">
-        <div class="max-w-5xl mx-auto px-6 text-center reveal">
-            <div class="flex justify-center gap-1 mb-10 text-orange-400">
-                <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-            </div>
-            <h2 class="text-4xl font-serif italic leading-relaxed">"The AI booking system is surprisingly seamless, but the Truffle Risotto is what will bring me back every single weekend. A true masterpiece."</h2>
-            <p class="mt-8 text-[10px] uppercase tracking-[0.5em] text-gray-500 font-bold">Aditya Mishra, Food Critic</p>
-        </div>
-    </section>
-
-    <footer class="py-32 bg-black text-center">
-        <h2 class="text-4xl font-serif mb-10 italic">Visit The Bean.</h2>
-        <p class="text-gray-500 tracking-[0.4em] uppercase text-xs mb-20">123 Skyline Terrace • Jaipur • Reservations: +1 (878) 290-7611</p>
-        <div class="flex justify-center space-x-12 text-[9px] text-gray-700 uppercase tracking-[0.4em] font-bold">
-            <a href="#" class="hover:text-white transition">Instagram</a>
-            <a href="#" class="hover:text-white transition">Menu PDF</a>
-            <a href="#" class="hover:text-white transition">Privacy</a>
+    <footer class="py-32 text-center bg-black">
+        <div class="text-3xl font-serif mb-10 italic">Velvet Bean</div>
+        <p class="text-gray-600 tracking-[0.5em] uppercase text-[9px] mb-12">123 Skyline Terrace • Jaipur • Reservations: +1 (878) 290-7611</p>
+        <div class="flex justify-center space-x-12 text-[9px] text-gray-800 uppercase tracking-widest font-black">
+            <span>Instagram</span><span>Vogue</span><span>Michelin Guide</span>
         </div>
     </footer>
 
@@ -120,31 +92,28 @@
             const res = await fetch('/api/menu');
             const items = await res.json();
             document.getElementById('dynamic-menu').innerHTML = items.map(item => `
-                <div class="group reveal flex items-center space-x-10 p-6 hover:bg-white/[0.03] rounded-[2rem] transition duration-700">
-                    <div class="relative overflow-hidden rounded-2xl w-32 h-32 flex-shrink-0">
+                <div class="group reveal flex items-center space-x-10 p-6 hover:bg-white/[0.02] rounded-[2.5rem] transition duration-700">
+                    <div class="w-40 h-40 flex-shrink-0 overflow-hidden rounded-3xl">
                         <img src="${item.photo}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-110 transition duration-1000">
                     </div>
                     <div class="flex-1">
-                        <div class="flex justify-between items-baseline border-b border-white/5 pb-3">
-                            <span class="text-2xl font-serif italic">${item.name}</span>
+                        <div class="flex justify-between items-baseline border-b border-white/5 pb-4">
+                            <h3 class="text-2xl font-serif italic">${item.name}</h3>
                             <span class="text-orange-500 font-light text-sm">${item.price}</span>
                         </div>
-                        <p class="text-gray-500 text-[10px] mt-4 uppercase tracking-[0.2em] font-bold">Chef's Special Recommendation</p>
+                        <p class="text-gray-600 text-[9px] mt-4 uppercase tracking-[0.2em] font-bold italic">Curated Selection</p>
                     </div>
                 </div>
             `).join('');
-            initScrollReveal();
+            initReveal();
         }
 
-        function initScrollReveal() {
+        function initReveal() {
             const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) entry.target.classList.add('active');
-                });
-            }, { threshold: 0.1 });
+                entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('active'); });
+            });
             document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
         }
-
         fetchMenu();
     </script>
 </body>
