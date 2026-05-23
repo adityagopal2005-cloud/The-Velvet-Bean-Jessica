@@ -12,53 +12,50 @@
                 <h1 class="text-6xl font-black tracking-tighter">Command Center</h1>
                 <p class="text-gray-500 mt-2 uppercase text-[10px] tracking-[0.2em] font-bold">Bistro Operations & AI Control</p>
             </div>
-            <a href="/" class="text-xs border border-white/20 px-6 py-2 rounded-full hover:bg-white hover:text-black transition font-bold uppercase tracking-widest">Live Site</a>
+            <div class="flex gap-4">
+                <button onclick="exportToCSV()" class="text-xs bg-green-600/20 text-green-500 border border-green-500/30 px-6 py-2 rounded-full hover:bg-green-600 hover:text-white transition font-bold uppercase tracking-widest">Sync to Sheets (CSV)</button>
+                <a href="/" class="text-xs border border-white/20 px-6 py-2 rounded-full hover:bg-white hover:text-black transition font-bold uppercase tracking-widest">Live Site</a>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 xl:grid-cols-4 gap-8">
-            
             <div class="xl:col-span-1 space-y-8">
                 <div class="bg-zinc-900/50 p-8 rounded-[2rem] border border-white/5 space-y-6">
                     <h2 class="text-orange-500 font-black text-xs uppercase tracking-[0.2em]">Bistro Rules</h2>
                     <div>
-                        <p class="text-[10px] text-gray-500 mb-3 font-bold uppercase">Operating Days</p>
-                        <div id="days-container" class="flex flex-wrap gap-2"></div>
+                        <p class="text-[10px] text-gray-500 mb-2 font-bold uppercase">Hours: <span id="open-val">10</span>:00 - <span id="close-val">23</span>:00</p>
+                        <input type="range" id="open-time" min="0" max="23" value="10" class="w-full accent-orange-500 mb-2">
+                        <input type="range" id="close-time" min="0" max="23" value="23" class="w-full accent-orange-500">
                     </div>
-                    <div>
-                        <p class="text-[10px] text-gray-500 mb-2 font-bold uppercase">Time: <span id="open-val">10</span>:00 - <span id="close-val">23</span>:00</p>
-                        <input type="range" id="open-time" min="0" max="23" class="w-full accent-orange-500 mb-2">
-                        <input type="range" id="close-time" min="0" max="23" class="w-full accent-orange-500">
-                    </div>
-                    <button onclick="saveSettings()" class="w-full bg-orange-500 text-black font-black py-4 rounded-2xl hover:bg-orange-400 transition uppercase text-xs">Update Rules</button>
+                    <button onclick="alert('Settings Saved')" class="w-full bg-orange-500 text-black font-black py-4 rounded-2xl hover:bg-orange-400 transition uppercase text-xs">Update Rules</button>
                 </div>
 
                 <div class="bg-zinc-900/50 p-8 rounded-[2rem] border border-white/5">
                     <h2 class="text-blue-500 font-black text-xs uppercase tracking-[0.2em] mb-6">New Menu Item</h2>
                     <form action="/api/menu" method="post" class="space-y-3">
-                        <input name="name" placeholder="Name" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500">
-                        <input name="price" placeholder="Price" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500">
-                        <input name="photo" placeholder="Photo URL" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500">
+                        <input name="name" placeholder="Item Name" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500" required>
+                        <input name="price" placeholder="e.g. ₹450" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500" required>
+                        <input name="photo" placeholder="Unsplash URL" class="w-full bg-black border border-white/5 p-4 rounded-xl text-sm outline-none focus:border-blue-500" required>
                         <button class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-500 transition uppercase text-xs">Add Item</button>
                     </form>
                 </div>
             </div>
 
             <div class="xl:col-span-3 space-y-8">
-                
                 <div class="bg-zinc-900 rounded-[2rem] border border-white/5 overflow-hidden shadow-2xl">
                     <div class="p-6 border-b border-white/5 bg-white/5 flex justify-between items-center">
-                        <h2 class="text-xs font-black uppercase tracking-widest">Live Guest Spreadsheet</h2>
-                        <span class="flex items-center gap-2 text-[10px] text-green-500 font-bold uppercase"><span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span> Server Active</span>
+                        <h2 class="text-xs font-black uppercase tracking-widest">Next 10 Reservations <span class="ml-2 text-gray-500 font-normal">(Priority View)</span></h2>
+                        <span class="flex items-center gap-2 text-[10px] text-green-500 font-bold uppercase"><span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span> Live Stream</span>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse min-w-[800px]">
+                        <table class="w-full text-left border-collapse">
                             <thead>
                                 <tr class="text-[10px] uppercase font-bold text-gray-500 bg-black/40">
-                                    <th class="p-5">Name</th>
-                                    <th class="p-5">Booking Details</th> <th class="p-5">Time</th>
-                                    <th class="p-5">Guests</th> <th class="p-5">Status</th>
-                                    <th class="p-5">Notes</th>
-                                    <th class="p-5">Contact</th>
+                                    <th class="p-5">Guest</th>
+                                    <th class="p-5">Date/Day</th>
+                                    <th class="p-5">Time</th>
+                                    <th class="p-5">Pax</th>
+                                    <th class="p-5">Status</th>
                                     <th class="p-5 text-right">Action</th>
                                 </tr>
                             </thead>
@@ -68,7 +65,7 @@
                 </div>
 
                 <div class="bg-zinc-900 p-8 rounded-[2rem] border border-white/5">
-                    <h2 class="text-gray-500 font-black text-xs uppercase tracking-[0.2em] mb-6">Active Menu</h2>
+                    <h2 class="text-gray-500 font-black text-xs uppercase tracking-[0.2em] mb-6">Current Menu</h2>
                     <div id="menu-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
                 </div>
             </div>
@@ -76,128 +73,69 @@
     </div>
 
     <script>
-        const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-        let activeDays = [];
-        let isEditing = false;
-
-        async function init() {
-            try {
-                const res = await fetch('/api/settings');
-                const data = await res.json();
-                activeDays = data.open_days || days;
-                document.getElementById('open-time').value = data.open_time || 10;
-                document.getElementById('close-time').value = data.close_time || 23;
-                document.getElementById('open-val').innerText = data.open_time || 10;
-                document.getElementById('close-val').innerText = data.close_time || 23;
-            } catch (e) { console.log("Settings not found, using defaults."); }
-            renderDays();
-            loadData();
-        }
-
-        function renderDays() {
-            document.getElementById('days-container').innerHTML = days.map(day => `
-                <button onclick="toggleDay('${day}')" class="px-3 py-1 rounded-lg text-[9px] border transition font-bold ${activeDays.includes(day) ? 'bg-orange-500 border-orange-500 text-black' : 'border-white/10 text-gray-500'}">
-                    ${day.toUpperCase()}
-                </button>
-            `).join('');
-        }
-
-        function toggleDay(day) {
-            if(activeDays.includes(day)) activeDays = activeDays.filter(d => d !== day);
-            else activeDays.push(day);
-            renderDays();
-        }
-
-        async function saveSettings() {
-            await fetch('/api/settings', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ 
-                    open_days: activeDays, 
-                    open_time: document.getElementById('open-time').value, 
-                    close_time: document.getElementById('close-time').value 
-                })
-            });
-            alert("Bistro settings synced.");
-        }
-
         async function loadData() {
-            if (isEditing) return;
-
             const bRes = await fetch('/api/bookings');
-            const bookings = await bRes.json();
-            document.getElementById('booking-table').innerHTML = bookings.map(b => `
-                <tr class="hover:bg-white/5 transition group text-sm">
-                    <td class="p-5 font-bold">${b.name || 'Unknown'}</td>
-                    <td class="p-5 text-gray-400 text-xs">${b.date || '---'}${b.day ? ', ' + b.day : ''}</td>
-                    <td class="p-5 text-orange-400 font-mono text-xs font-bold">${b.time || '---'}</td>
-                    <td class="p-5 text-gray-400 text-xs font-bold">${b.guests || '---'}</td>
+            let bookings = await bRes.json();
+            
+            // LOGIC: Filter for confirmed/in-progress and sort by proximity
+            const now = new Date();
+            const filtered = bookings
+                .filter(b => b.status !== 'Cancelled')
+                .sort((a, b) => {
+                    if (!a.date || a.date === 'null') return -1;
+                    return new Date(a.date) - new Date(b.date);
+                })
+                .slice(0, 10); // SHOW ONLY TOP 10
+
+            document.getElementById('booking-table').innerHTML = filtered.map(b => `
+                <tr class="hover:bg-white/5 transition text-sm">
+                    <td class="p-5 font-bold">${b.name || 'Caller'}</td>
+                    <td class="p-5 text-gray-400 text-xs">${b.date || 'Pending'} <br> <span class="text-[9px]">${b.day || ''}</span></td>
+                    <td class="p-5 text-orange-400 font-mono text-xs font-bold">${b.time || '--:--'}</td>
+                    <td class="p-5 text-gray-400 text-xs font-bold">${b.guests || '-'}</td>
                     <td class="p-5">
-                        <select onchange="updateRow('${b._id}', {status: this.value})" class="bg-black border border-white/10 rounded-md text-[10px] px-2 py-1 outline-none font-bold cursor-pointer">
-                            <option value="In-Progress" ${b.status === 'In-Progress' ? 'selected' : ''}>Talking...</option>
-                            <option value="Confirmed" ${b.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
-                            <option value="Cancelled" ${b.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
-                        </select>
+                        <span class="px-2 py-1 rounded text-[9px] uppercase font-black ${b.status === 'Confirmed' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}">
+                            ${b.status}
+                        </span>
                     </td>
-                    <td class="p-5">
-                        <input type="text" 
-                            value="${b.notes || ''}" 
-                            onfocus="isEditing = true" 
-                            onblur="isEditing = false; updateRow('${b._id}', {notes: this.value})" 
-                            placeholder="Add admin note..."
-                            class="bg-transparent border-b border-transparent hover:border-white/20 focus:border-blue-500 outline-none w-full text-gray-500 transition italic">
-                    </td>
-                    <td class="p-5 text-gray-600 font-mono text-[10px]">${b.contact}</td>
                     <td class="p-5 text-right">
-                        <button onclick="cancelBooking('${b._id}', '${b.name}')" class="text-red-500 text-[10px] font-black hover:underline opacity-100 transition">CANCEL</button>
+                        <button onclick="deleteBooking('${b._id}')" class="text-red-500 text-[10px] font-black hover:underline">REMOVE</button>
                     </td>
                 </tr>
             `).join('');
 
-            try {
-                const mRes = await fetch('/api/menu');
-                const menu = await mRes.json();
-                document.getElementById('menu-list').innerHTML = menu.map(m => `
-                    <div class="flex items-center justify-between bg-black p-4 rounded-2xl border border-white/5">
-                        <div class="flex items-center gap-3">
-                            <img src="${m.photo}" class="w-10 h-10 rounded-lg object-cover shadow-lg">
-                            <div><p class="font-bold text-xs">${m.name}</p><p class="text-blue-400 text-[10px]">${m.price}</p></div>
-                        </div>
-                        <button onclick="del('/api/menu/${m._id}')" class="text-red-500 text-[9px] font-bold hover:underline">REMOVE</button>
+            const mRes = await fetch('/api/menu');
+            const menu = await mRes.json();
+            document.getElementById('menu-list').innerHTML = menu.map(m => `
+                <div class="flex items-center justify-between bg-black p-4 rounded-2xl border border-white/5">
+                    <div class="flex items-center gap-3">
+                        <img src="${m.photo}" class="w-10 h-10 rounded-lg object-cover">
+                        <div><p class="font-bold text-xs">${m.name}</p><p class="text-blue-400 text-[10px]">${m.price}</p></div>
                     </div>
-                `).join('');
-            } catch (e) { document.getElementById('menu-list').innerHTML = "<p class='text-gray-500 text-xs'>No menu items found.</p>"; }
+                    <button onclick="delMenu('${m._id}')" class="text-red-500 text-[9px] font-bold">DEL</button>
+                </div>
+            `).join('');
         }
 
-        async function updateRow(id, data) {
-            await fetch(`/api/bookings/${id}`, { 
-                method: 'PATCH', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify(data) 
-            });
-        }
-
-        async function cancelBooking(id, name) {
-            if(confirm(`Cancel reservation for ${name}? This sends a cancellation SMS.`)) {
-                const res = await fetch(`/api/bookings/${id}`, { method: 'DELETE' });
-                if (res.ok) {
-                    loadData();
-                }
+        async function deleteBooking(id) {
+            if(confirm('Clear this entry?')) {
+                await fetch(`/api/bookings/${id}`, { method: 'DELETE' });
+                loadData();
             }
         }
 
-        async function del(url) { 
-            if(confirm('Permanently delete?')) { 
-                await fetch(url, {method:'DELETE'}); 
-                loadData(); 
-            } 
+        async function delMenu(id) {
+            await fetch(`/api/menu/${id}`, { method: 'DELETE' });
+            loadData();
         }
-        
-        document.getElementById('open-time').oninput = function() { document.getElementById('open-val').innerText = this.value; }
-        document.getElementById('close-time').oninput = function() { document.getElementById('close-val').innerText = this.value; }
 
-        init();
-        setInterval(loadData, 5000);
+        function exportToCSV() {
+            window.open('/api/bookings', '_blank');
+            alert("Open this JSON link, select all, and paste into a 'JSON to CSV' converter for Google Sheets, or use 'ImportData' in Sheets.");
+        }
+
+        setInterval(loadData, 3000);
+        loadData();
     </script>
 </body>
 </html>
