@@ -97,9 +97,10 @@ def get_ai_response(user_input, caller_number):
 # --- ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
-async def home_redirect():
-    # This stops the "Not Found" error at the base URL
-    return "<h1>Velvet Bean Bistro AI is Online</h1><p>Visit <a href='/admin'>/admin</a> for the dashboard.</p>"
+async def home_page():
+    # This will now serve your actual home.html file instead of just text
+    with open("home.html") as f: 
+        return f.read()
 
 @app.post("/voice")
 async def voice_start(request: Request):
