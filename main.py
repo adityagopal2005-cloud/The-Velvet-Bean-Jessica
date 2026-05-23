@@ -235,9 +235,9 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def update_settings(data: dict = Body(...)):
-    """Updates restaurant schedule from the admin panel."""
+    # This ensures the dictionary from the frontend is saved directly to MongoDB
     db.settings.update_one({"type": "operating_hours"}, {"$set": data})
-    return {"status": "Updated"}
+    return {"status": "ok"}
 
 # --- MENU & BOOKING MANAGEMENT ---
 @app.get("/")
@@ -250,8 +250,16 @@ async def admin_page():
 
 @app.get("/api/bookings")
 async def fetch_bookings():
-    bookings = list(db.bookings.find({}))
-    for b in bookings: b["_id"] = str(b["_id"])
+    # 1. Sort by 'created_at' so the newest calls appear at the top
+    bookings = list(db.bookings.find({}).sort("created_at", -1))
+    
+    for b in bookings:
+        b["_id"] = str(b["_id"])
+        # 2. Add a fallback 'Anonymous' name if the AI hasn't collected it yet
+        # This prevents the Admin table from appearing blank
+        if "name" not in b: 
+            b["name"] = "Anonymous"
+            
     return bookings
 
 @app.delete("/api/bookings/{id}")
@@ -270,7 +278,8 @@ async def force_sync():
 @app.get("/api/menu")
 async def get_menu_items():
     items = list(db.menu.find({}))
-    for i in items: i["_id"] = str(i["_id"])
+    for i in items:
+        i["_id"] = str(i["_id"])
     return items
 
 @app.post("/api/menu")
