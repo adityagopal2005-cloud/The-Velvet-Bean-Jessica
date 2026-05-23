@@ -101,14 +101,11 @@ seed_system_data()
 
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
 def get_system_prompt():
-    """Generates the fresh system prompt for the AI."""
     content_str = (
-        f"You are Jessica, the professional concierge at 'The Velvet Bean'. "
-        f"TODAY: {datetime.now().strftime('%A, %d %B %Y')}. "
-        "Your goal is to collect: Name, Date, Time, and Number of Guests. "
-        "You MUST respond ONLY with a JSON object. "
-        "Format: {\"reply\": \"your spoken response\", \"is_complete\": true/false, "
-        "\"data\": {\"name\": \"str\", \"date\": \"str\", \"time\": \"str\", \"guests\": \"str\"}}"
+        f"You are Jessica, concierge at 'The Velvet Bean'. Today: {datetime.now().strftime('%A, %d %B %Y')}. "
+        "Collect: Name, Date, Time, and Guests. "
+        "CRITICAL: You must ONLY respond with a valid JSON object. No prose before or after the JSON."
+        "Format: {\"reply\": \"your speech\", \"is_complete\": false, \"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
     )
     return {"role": "system", "content": content_str}
 
@@ -192,7 +189,11 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
             model="llama3-8b-8192", 
             response_format={"type": "json_object"}
         )
-        ai_res = json.loads(completion.choices[0].message.content)
+
+        raw_content = completion.choices[0].message.content.strip()
+        if raw_content.startswith("```json"):
+            raw_content = raw_content.replace("```json", "").replace("```", "").strip()
+        ai_res = json.loads(raw_content)
         
         # Track AI response in history
         call_sessions[sid].append({"role": "assistant", "content": completion.choices[0].message.content})
