@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Velvet Bean | Signature Rooftop Bistro</title>
+    <title>The Velvet Bean | Jaipur's Ultimate Rooftop Experience</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@200;300;400;600&display=swap" rel="stylesheet">
     <style>
@@ -11,132 +11,170 @@
         .font-serif { font-family: 'Playfair Display', serif; }
         .parallax { background-attachment: fixed; background-size: cover; background-position: center; }
         .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .reveal { opacity: 0; transform: translateY(50px); transition: all 1.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        
+        /* Reveal Animations */
+        .reveal { opacity: 0; transform: translateY(60px); transition: all 1.8s cubic-bezier(0.16, 1, 0.3, 1); }
         .reveal.active { opacity: 1; transform: translateY(0); }
         
-        /* Premium Scrollbar */
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #050505; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #000; }
         ::-webkit-scrollbar-thumb { background: #ea580c; border-radius: 10px; }
     </style>
 </head>
 <body>
 
-    <nav class="fixed w-full z-50 px-10 md:px-20 py-12 flex justify-between items-center pointer-events-none">
-        <div class="text-3xl font-serif tracking-[0.4em] uppercase italic pointer-events-auto">Velvet Bean</div>
+    <nav class="fixed w-full z-50 px-8 md:px-20 py-12 flex justify-between items-center pointer-events-none">
+        <div class="text-3xl font-serif tracking-[0.5em] uppercase italic pointer-events-auto">Velvet Bean</div>
         <div class="hidden md:flex space-x-16 text-[10px] uppercase tracking-[0.6em] font-bold text-gray-500 pointer-events-auto">
-            <a href="#about" class="hover:text-white transition duration-500">Ambiance</a>
-            <a href="#menu" class="hover:text-white transition duration-500">Menu</a>
-            <a href="/admin" class="text-orange-600 hover:text-orange-400">Terminal</a>
+            <a href="#about" class="hover:text-white transition duration-700">The Space</a>
+            <a href="#menu" class="hover:text-white transition duration-700">Signature Taste</a>
+            <a href="/admin" class="text-orange-600 hover:text-orange-400 transition-all font-black border-l border-white/10 pl-10">Admin Terminal</a>
         </div>
     </nav>
 
-    <header class="h-screen flex flex-col items-center justify-center text-center px-6 parallax relative" style="background-image: linear-gradient(rgba(0,0,0,0.6), #050505), url('https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=2070');">
+    <header class="h-screen flex flex-col items-center justify-center text-center px-6 parallax relative" style="background-image: linear-gradient(rgba(0,0,0,0.4), #050505), url('https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=2070');">
         <div class="reveal">
-            <span class="text-orange-500 uppercase tracking-[1em] text-[11px] font-black mb-10 block animate-pulse">Jaipur's Finest Rooftop</span>
-            <h1 class="text-8xl md:text-[14rem] font-serif tracking-tighter leading-[0.75] italic mb-16">Pure <br> Elegance.</h1>
-            <div class="flex flex-col md:flex-row gap-6 items-center justify-center">
-                <a href="tel:+18782907611" class="glass px-20 py-8 rounded-full text-xs font-bold uppercase tracking-[0.4em] hover:bg-white hover:text-black transition-all duration-1000 shadow-2xl">
-                    Call Jessica AI
+            <span class="text-orange-500 uppercase tracking-[1em] text-[11px] font-black mb-12 block animate-pulse">Jaipur's Finest Rooftop</span>
+            <h1 class="text-8xl md:text-[15rem] font-serif tracking-tighter leading-[0.75] italic mb-16">Pure <br> Elegance.</h1>
+            <div class="flex flex-col md:flex-row gap-8 items-center justify-center">
+                <a href="tel:+18782907611" class="glass px-24 py-8 rounded-full text-xs font-bold uppercase tracking-[0.5em] hover:bg-white hover:text-black transition-all duration-1000 shadow-2xl">
+                    Call Jessica Concierge
                 </a>
-                <p id="op-hours" class="text-[10px] uppercase tracking-widest text-gray-500 font-bold border-l border-white/20 pl-8"></p>
+                <div class="border-l border-white/20 pl-10 text-left">
+                    <p id="live-hours" class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Checking Service Status...</p>
+                    <p id="live-days" class="text-[8px] uppercase tracking-widest text-gray-600 mt-1 font-bold">Reservations Recommended</p>
+                </div>
             </div>
         </div>
-        <div class="absolute bottom-10 animate-bounce">
-            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 14l-7 7-7-7m14-8l-7 7-7-7"/></svg>
+        <div class="absolute bottom-12 animate-bounce opacity-30">
+            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 14l-7 7-7-7m14-8l-7 7-7-7"/></svg>
         </div>
     </header>
 
     <section id="about" class="py-60 px-6">
         <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-32 items-center">
             <div class="reveal">
-                <h2 class="text-7xl font-serif leading-[1.1] mb-12 italic">A Sanctuary for <br> the Senses.</h2>
-                <p class="text-gray-400 text-xl font-light leading-relaxed mb-12 max-w-lg">
-                    Nestled among the clouds, The Velvet Bean combines avant-garde mixology with a culinary philosophy centered on fire, smoke, and Himalayan salt.
+                <h2 class="text-7xl font-serif leading-[1.1] mb-12 italic">A Sanctuary For <br> Modern Epicureans.</h2>
+                <p class="text-gray-500 text-xl font-light leading-relaxed mb-16 max-w-lg">
+                    Perched atop the Pink City, The Velvet Bean is more than a bistro—it's a dialogue between architectural precision and culinary fire. 
                 </p>
-                <div class="flex gap-16">
-                    <div><p class="text-5xl font-serif text-orange-500 mb-2">01</p><p class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Private Atelier</p></div>
-                    <div><p class="text-5xl font-serif text-orange-500 mb-2">02</p><p class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Heated Rooftop</p></div>
+                <div class="grid grid-cols-2 gap-16">
+                    <div class="border-t border-white/10 pt-10">
+                        <p class="text-5xl font-serif text-orange-500 mb-2">01</p>
+                        <p class="text-[10px] uppercase tracking-widest text-gray-600 font-black">Private Rooftop Atelier</p>
+                    </div>
+                    <div class="border-t border-white/10 pt-10">
+                        <p class="text-5xl font-serif text-orange-500 mb-2">02</p>
+                        <p class="text-[10px] uppercase tracking-widest text-gray-600 font-black">Michelin Standard Plates</p>
+                    </div>
                 </div>
             </div>
-            <div class="reveal grid grid-cols-2 gap-4">
-                <div class="pt-20"><img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=800" class="rounded-[3rem] grayscale hover:grayscale-0 transition duration-1000 rotate-3"></div>
-                <div><img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=800" class="rounded-[3rem] grayscale hover:grayscale-0 transition duration-1000 -rotate-3"></div>
+            <div class="reveal relative">
+                <div class="aspect-[4/5] rounded-[4rem] overflow-hidden rotate-2 hover:rotate-0 transition duration-1000">
+                    <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=800" class="w-full h-full object-cover grayscale hover:grayscale-0 transition duration-1000">
+                </div>
+                <div class="absolute -bottom-20 -left-20 w-80 aspect-square rounded-[3rem] overflow-hidden -rotate-6 hidden lg:block border-[20px] border-black">
+                    <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=800" class="w-full h-full object-cover">
+                </div>
             </div>
         </div>
     </section>
 
     <section id="menu" class="py-40 bg-[#080808] px-6">
         <div class="max-w-4xl mx-auto text-center mb-40 reveal">
-            <h2 class="text-8xl font-serif italic mb-8">The Tasting Room</h2>
-            <p class="text-orange-500 uppercase tracking-[0.8em] text-[11px] font-black">Signature Curations</p>
+            <h2 class="text-8xl font-serif italic mb-10">The Tasting Room</h2>
+            <p class="text-orange-500 uppercase tracking-[1em] text-[11px] font-black">Epicurean Curations</p>
         </div>
-        <div id="dynamic-menu" class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-x-32 gap-y-24">
+        
+        <div id="dynamic-menu-feed" class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-x-32 gap-y-20">
             </div>
     </section>
 
     <section class="py-60 px-6 border-y border-white/5">
-        <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-20">
-            <div class="reveal text-center">
-                <p class="text-4xl font-serif italic mb-10 leading-relaxed text-gray-300">"The AI Jessica handle our complex group booking flawlessly. The Wagyu Sliders are life-changing."</p>
-                <span class="text-[9px] uppercase tracking-[0.4em] font-black text-orange-600">Arjun Mehta • Food Critic</span>
-            </div>
-            <div class="reveal text-center md:mt-20">
-                <p class="text-4xl font-serif italic mb-10 leading-relaxed text-gray-300">"Jaipur finally has a rooftop that rivals London. The cocktails are pure artistry."</p>
-                <span class="text-[9px] uppercase tracking-[0.4em] font-black text-orange-600">Sonia Ray • Vogue India</span>
-            </div>
-            <div class="reveal text-center">
-                <p class="text-4xl font-serif italic mb-10 leading-relaxed text-gray-300">"An absolute sanctuary. The Saffron Burrata is the best dish I've had this year."</p>
-                <span class="text-[9px] uppercase tracking-[0.4em] font-black text-orange-600">Vikram Singh • CEO</span>
+        <div class="max-w-6xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-24">
+                <div class="reveal text-center">
+                    <p class="text-3xl font-serif italic mb-10 leading-relaxed text-gray-300">"The AI Jessica Concierge handled our request with elite precision. The sliders were life-changing."</p>
+                    <span class="text-[10px] uppercase tracking-[0.5em] font-black text-orange-600">— Vikram Singh, Jaipur Life</span>
+                </div>
+                <div class="reveal text-center md:mt-32">
+                    <p class="text-3xl font-serif italic mb-10 leading-relaxed text-gray-300">"A rooftop sanctuary that finally brings international mixology standards to the heart of Jaipur."</p>
+                    <span class="text-[10px] uppercase tracking-[0.5em] font-black text-orange-600">— Sonia Ray, Vogue</span>
+                </div>
+                <div class="reveal text-center">
+                    <p class="text-3xl font-serif italic mb-10 leading-relaxed text-gray-300">"Pure atmospheric brilliance. The Himalayan lamb is a masterpiece of fire and salt."</p>
+                    <span class="text-[10px] uppercase tracking-[0.5em] font-black text-orange-600">— Michelin Guide 2026</span>
+                </div>
             </div>
         </div>
     </section>
 
     <footer class="py-40 text-center bg-black">
-        <div class="text-5xl font-serif mb-12 italic tracking-widest">Velvet Bean</div>
-        <div id="footer-days" class="text-gray-600 tracking-[0.4em] uppercase text-[9px] mb-20 max-w-md mx-auto leading-loose"></div>
-        <div class="flex justify-center space-x-16 text-[10px] text-gray-800 uppercase tracking-widest font-black">
-            <span class="hover:text-white transition">Instagram</span>
-            <span class="hover:text-white transition">Michelin 2026</span>
-            <span class="hover:text-white transition">Vogue Living</span>
+        <div class="text-6xl font-serif mb-16 italic tracking-widest">Velvet Bean</div>
+        <p id="footer-address" class="text-gray-700 tracking-[0.6em] uppercase text-[10px] mb-24 max-w-2xl mx-auto leading-loose">
+            123 Skyline Terrace • Jaipur City • Rajasthan
+        </p>
+        <div class="flex justify-center space-x-20 text-[11px] text-gray-800 uppercase tracking-widest font-black">
+            <span class="hover:text-white transition duration-700 cursor-pointer">Instagram</span>
+            <span class="hover:text-white transition duration-700 cursor-pointer">Art Director</span>
+            <span class="hover:text-white transition duration-700 cursor-pointer">Contact</span>
         </div>
     </footer>
 
     <script>
-        async function loadSite() {
-            // Load Settings (Days/Hours)
+        async function initializeSite() {
+            // 1. Fetch Operating Settings
             const sRes = await fetch('/api/settings');
             const sets = await sRes.json();
-            document.getElementById('op-hours').innerText = `Open ${sets.open} — ${sets.close}`;
-            document.getElementById('footer-days').innerText = `We welcome guests on ${sets.days.join(', ')}. Reservations are highly recommended via our AI Concierge.`;
+            document.getElementById('live-hours').innerText = `Open Today: ${sets.open} — ${sets.close}`;
+            document.getElementById('live-days').innerText = `Available on: ${sets.days.join(', ')}`;
 
-            // Load Menu (Dynamic Seeding)
+            // 2. Fetch and Render Menu Items (The Big 10)
             const mRes = await fetch('/api/menu');
-            const items = await mRes.json();
-            document.getElementById('dynamic-menu').innerHTML = items.map(item => `
-                <div class="group reveal flex items-center gap-10 hover:bg-white/[0.01] p-10 rounded-[3rem] transition duration-1000">
-                    <div class="w-48 h-48 flex-shrink-0 overflow-hidden rounded-[2.5rem] shadow-2xl">
-                        <img src="${item.photo}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-110 transition duration-1000">
-                    </div>
-                    <div class="flex-1">
-                        <div class="flex justify-between items-baseline border-b border-white/5 pb-6">
-                            <h3 class="text-3xl font-serif italic">${item.name}</h3>
-                            <span class="text-orange-500 font-light text-sm">${item.price}</span>
-                        </div>
-                        <p class="text-gray-600 text-[10px] mt-6 uppercase tracking-[0.3em] font-bold italic">Curated Artisanal Selection</p>
-                    </div>
-                </div>
-            `).join('');
+            const menuItems = await mRes.json();
             
-            initObserver();
+            // We empty the container first to prevent duplicates
+            const container = document.getElementById('dynamic-menu-feed');
+            container.innerHTML = "";
+
+            if(menuItems.length === 0) {
+                container.innerHTML = "<p class='col-span-2 text-center text-gray-600 tracking-widest uppercase py-20'>The kitchen is currently curating today's selections...</p>";
+            } else {
+                container.innerHTML = menuItems.map(item => `
+                    <div class="group reveal flex items-center gap-10 hover:bg-white/[0.01] p-10 rounded-[3.5rem] transition duration-1000">
+                        <div class="w-52 h-52 flex-shrink-0 overflow-hidden rounded-[3rem] shadow-2xl">
+                            <img src="${item.photo}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-110 transition duration-1000">
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-baseline border-b border-white/5 pb-8">
+                                <h3 class="text-3xl font-serif italic">${item.name}</h3>
+                                <span class="text-orange-500 font-light text-sm">${item.price}</span>
+                            </div>
+                            <p class="text-gray-700 text-[10px] mt-8 uppercase tracking-[0.3em] font-bold italic">Curated Artisan Dish</p>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            // 3. Trigger Observer for Animations
+            triggerReveal();
         }
 
-        function initObserver() {
-            const obs = new IntersectionObserver((es) => es.forEach(e => { if(e.isIntersecting) e.target.classList.add('active'); }));
-            document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+        function triggerReveal() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if(entry.isIntersecting) {
+                        entry.target.classList.add('active');
+                    }
+                });
+            }, { threshold: 0.1 });
+            
+            document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
         }
 
-        loadSite();
+        // Standard site initialization
+        initializeSite();
     </script>
 </body>
 </html>

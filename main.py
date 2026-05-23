@@ -1,8 +1,9 @@
 import os
 import json
 import uuid
+import logging
 from datetime import datetime
-from fastapi import FastAPI, Form, Request, Body, Depends, HTTPException
+from fastapi import FastAPI, Form, Request, Body, HTTPException, Depends
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client as TwilioClient
@@ -13,29 +14,42 @@ from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# --- CONFIGURATION & LOGGING ---
 load_dotenv()
 app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# --- INITIALIZATION ---
+# --- RESOURCE INITIALIZATION ---
+# We initialize all external connections here. If any fail, the server logs a warning.
 try:
+    # MongoDB Connection
     mongo_client = MongoClient(os.getenv("MONGO_URI"))
     db = mongo_client["RestaurantDB"] 
+    
+    # AI & Voice Engines
     groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     el_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+    
+    # Twilio Telephony
     twilio_client = TwilioClient(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
     
-    # Google Sheets Integration (RETAINED)
+    # Google Sheets Integration (Retained)
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
     sheets_client = gspread.authorize(creds)
+    # Ensure your Google Sheet is named 'Velvet Bean Reservations'
     sheet = sheets_client.open("Velvet Bean Reservations").get_worksheet(0)
+    logger.info("All resources initialized successfully.")
 except Exception as e:
-    print(f"Initialization Warning: {e}")
+    logger.error(f"Initialization Warning: {e}")
 
+# Global session tracker for active calls
 call_sessions = {}
 
-# --- HELPER: SYNC TO SHEETS (RETAINED) ---
+# --- CORE UTILITY: GOOGLE SHEETS SYNC ---
 def sync_to_sheets(data):
+    """Pushes a confirmed reservation to the linked Google Sheet."""
     try:
         sheet.append_row([
             datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -46,78 +60,113 @@ def sync_to_sheets(data):
             data.get("contact", "N/A"),
             data.get("status", "Confirmed")
         ])
+        return True
     except Exception as e:
-        print(f"Sheet Sync Failed: {e}")
+        logger.error(f"Google Sheet Sync Failed: {e}")
+        return False
 
-# --- SEEDING: 10 PREMIUM MENU ITEMS ---
-def seed_data():
+# --- DATABASE SEEDING: THE SIGNATURE 10 ---
+def seed_system_data():
+    """Ensures the menu and operating settings are populated on startup."""
+    # Seed 10 Premium Menu Items if the collection is empty
     if db.menu.count_documents({}) == 0:
         items = [
-            {"name": "Gold-Leaf Wagyu Sliders", "price": "₹2,450", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=800"},
-            {"name": "Truffle Infused Lobster Roll", "price": "₹3,100", "photo": "https://images.unsplash.com/photo-1553618531-97aa2bc002fa?q=80&w=800"},
-            {"name": "Saffron Burrata Salad", "price": "₹1,250", "photo": "https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?q=80&w=800"},
-            {"name": "Smoked Octopus Carpaccio", "price": "₹1,850", "photo": "https://images.unsplash.com/photo-1590577976322-3d2d6e2130ee?q=80&w=800"},
-            {"name": "Champagne Porcini Risotto", "price": "₹1,900", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=800"},
-            {"name": "Deconstructed Pistachio Baklava", "price": "₹850", "photo": "https://images.unsplash.com/photo-1519915028121-7d3463d20b13?q=80&w=800"},
-            {"name": "Velvet Signature Martini", "price": "₹950", "photo": "https://images.unsplash.com/photo-1574096079513-d8259312b785?q=80&w=800"},
-            {"name": "Himalayan Salted Lamb Chops", "price": "₹2,800", "photo": "https://images.unsplash.com/photo-1603048297172-c92544798d5a?q=80&w=800"},
-            {"name": "Wild Mushroom Cappuccino", "price": "₹750", "photo": "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=800"},
-            {"name": "Espresso Gold Old Fashioned", "price": "₹1,100", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=800"}
+            {"name": "24K Gold Wagyu Sliders", "price": "₹2,850", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=800"},
+            {"name": "Truffle Lobster Thermidor", "price": "₹3,400", "photo": "https://images.unsplash.com/photo-1553618531-97aa2bc002fa?q=80&w=800"},
+            {"name": "Saffron Infused Burrata", "price": "₹1,450", "photo": "https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?q=80&w=800"},
+            {"name": "Smoked Octopus Carpaccio", "price": "₹1,900", "photo": "https://images.unsplash.com/photo-1590577976322-3d2d6e2130ee?q=80&w=800"},
+            {"name": "Wild Mushroom Risotto", "price": "₹1,200", "photo": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?q=80&w=800"},
+            {"name": "Pistachio Baklava Tower", "price": "₹850", "photo": "https://images.unsplash.com/photo-1519915028121-7d3463d20b13?q=80&w=800"},
+            {"name": "The Velvet Martini", "price": "₹950", "photo": "https://images.unsplash.com/photo-1574096079513-d8259312b785?q=80&w=800"},
+            {"name": "Aged Himalayan Lamb Chops", "price": "₹2,600", "photo": "https://images.unsplash.com/photo-1603048297172-c92544798d5a?q=80&w=800"},
+            {"name": "Porcini Cappuccino Soup", "price": "₹750", "photo": "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?q=80&w=800"},
+            {"name": "Espresso Gold Old Fashioned", "price": "₹1,150", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=800"}
         ]
         db.menu.insert_many(items)
-    
-    if db.settings.count_documents({}) == 0:
+        logger.info("Menu seeded with 10 items.")
+
+    # Seed Default Operating Hours
+    if db.settings.count_documents({"type": "operating_hours"}) == 0:
         db.settings.insert_one({
             "type": "operating_hours",
             "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
             "open": "18:00",
             "close": "23:00"
         })
+        logger.info("Operating hours seeded.")
 
-seed_data()
+seed_system_data()
 
-# --- VOICE LOGIC (RETAINED) ---
+# --- VOICE AI LOGIC (AI CONCIERGE) ---
 def generate_audio(text, filename):
+    """Converts text to high-quality audio via ElevenLabs."""
     try:
-        audio = el_client.text_to_speech.convert(voice_id="cgSgspJ2msm6clMCkdW9", text=text, model_id="eleven_turbo_v2_5")
+        audio = el_client.text_to_speech.convert(
+            voice_id="cgSgspJ2msm6clMCkdW9", 
+            text=text, 
+            model_id="eleven_turbo_v2_5"
+        )
         with open(f"static/{filename}.mp3", "wb") as f:
             for chunk in audio: f.write(chunk)
         return True
-    except: return False
+    except Exception as e:
+        logger.error(f"Audio Generation Error: {e}")
+        return False
 
 @app.post("/voice")
 async def voice_start(request: Request):
+    """Initial entry point for incoming Twilio calls."""
     form_data = await request.form()
     caller = form_data.get("From", "unknown")
     session_id = f"sess_{uuid.uuid4().hex[:6]}"
-    db.bookings.insert_one({"session_id": session_id, "contact": caller, "status": "Talking...", "created_at": datetime.now()})
     
-    call_sessions[session_id] = [{"role": "system", "content": "You are Jessica, concierge at 'The Velvet Bean'. Collect Name, Date, Time, Pax. Reply in JSON: {'reply': 'str', 'is_complete': bool, 'data': {...}}"}]
+    # Log the conversation start in the DB
+    db.bookings.insert_one({
+        "session_id": session_id, "contact": caller, "status": "Talking...", "created_at": datetime.now()
+    })
+    
+    call_sessions[session_id] = [{
+        "role": "system", 
+        "content": "You are Jessica, concierge at 'The Velvet Bean'. Collect Name, Date, Time, Pax. Reply in JSON: {'reply': 'string', 'is_complete': bool, 'data': {...}}"
+    }]
     
     response = VoiceResponse()
-    msg = "Welcome to the Velvet Bean. This is Jessica. How may I assist with your reservation?"
+    msg = "Welcome to the Velvet Bean. I'm Jessica. How may I assist with your reservation?"
     fid = f"hi_{session_id}"
-    if generate_audio(msg, fid): response.play(f"/static/{fid}.mp3")
-    else: response.say(msg)
+    
+    if generate_audio(msg, fid):
+        response.play(f"/static/{fid}.mp3")
+    else:
+        response.say(msg)
     
     response.append(Gather(input='speech', action=f"/respond?sid={session_id}", language='en-IN', speech_timeout='1.2'))
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
+    """Handles the back-and-forth conversation with the AI."""
     if not SpeechResult:
         res = VoiceResponse()
         res.append(Gather(input='speech', action=f"/respond?sid={sid}", language='en-IN'))
         return HTMLResponse(content=str(res), media_type="application/xml")
 
     call_sessions[sid].append({"role": "user", "content": SpeechResult})
-    completion = groq_client.chat.completions.create(messages=call_sessions[sid], model="llama-3.3-70b-versatile", response_format={"type": "json_object"})
+    
+    # Process with Groq (Llama 3.3)
+    completion = groq_client.chat.completions.create(
+        messages=call_sessions[sid], 
+        model="llama-3.3-70b-versatile", 
+        response_format={"type": "json_object"}
+    )
     ai_res = json.loads(completion.choices[0].message.content)
     
     data = ai_res.get("data", {})
     status = "Confirmed" if ai_res.get("is_complete") else "Talking..."
+    
+    # Sync to DB
     db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": status}})
     
+    # Sync to Sheets if finished
     if ai_res.get("is_complete"):
         sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
 
@@ -132,66 +181,78 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         response.hangup()
     return HTMLResponse(content=str(response), media_type="application/xml")
 
-# --- ADMIN & SETTINGS API ---
+# --- AUTHENTICATION & SETTINGS API ---
+@app.post("/api/login")
+async def admin_login(data: dict = Body(...)):
+    """Validates the admin credentials (Aditya / 092005)."""
+    if data.get("username") == "Aditya" and data.get("password") == "092005":
+        return {"status": "success"}
+    raise HTTPException(status_code=401, detail="Unauthorized Access")
+
 @app.get("/api/settings")
 async def get_settings():
+    """Fetches opening hours and open days for the frontend."""
     return db.settings.find_one({"type": "operating_hours"}, {"_id": 0})
 
 @app.post("/api/settings")
 async def update_settings(data: dict = Body(...)):
+    """Updates restaurant schedule from the admin panel."""
     db.settings.update_one({"type": "operating_hours"}, {"$set": data})
     return {"status": "Updated"}
 
-@app.post("/api/login")
-async def login(data: dict = Body(...)):
-    if data.get("username") == "Aditya" and data.get("password") == "092005":
-        return {"status": "success"}
-    raise HTTPException(status_code=401, detail="Unauthorized")
-
+# --- MENU & BOOKING MANAGEMENT ---
 @app.get("/")
-async def home(): return HTMLResponse(open("home.html").read())
+async def home_page(): 
+    return HTMLResponse(open("home.html").read())
 
 @app.get("/admin")
-async def admin(): return HTMLResponse(open("index.html").read())
+async def admin_page(): 
+    return HTMLResponse(open("index.html").read())
 
 @app.get("/api/bookings")
-async def get_bookings():
+async def fetch_bookings():
     bookings = list(db.bookings.find({}))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
 
 @app.delete("/api/bookings/{id}")
-async def del_booking(id: str):
+async def remove_booking(id: str):
     from bson import ObjectId
     db.bookings.delete_one({"_id": ObjectId(id)})
     return {"status": "ok"}
 
 @app.post("/api/sync")
-async def sync_all_btn():
+async def force_sync():
+    """Manual trigger to push all confirmed bookings to Sheets."""
     bookings = list(db.bookings.find({"status": "Confirmed"}))
     for b in bookings: sync_to_sheets(b)
-    return {"message": f"Successfully pushed {len(bookings)} entries to Google Sheets."}
+    return {"message": f"Synchronized {len(bookings)} bookings to Cloud Sheets."}
 
 @app.get("/api/menu")
-async def get_menu():
+async def get_menu_items():
     items = list(db.menu.find({}))
     for i in items: i["_id"] = str(i["_id"])
     return items
 
 @app.post("/api/menu")
-async def add_menu(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
+async def create_menu_item(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
     db.menu.insert_one({"name": name, "price": price, "photo": photo})
     return HTMLResponse("<script>window.location.href='/admin'</script>")
 
 @app.delete("/api/menu/{id}")
-async def del_menu(id: str):
+async def delete_menu_item(id: str):
     from bson import ObjectId
     db.menu.delete_one({"_id": ObjectId(id)})
     return {"status": "ok"}
 
 @app.get("/static/{file}")
-async def static_file(file: str): return FileResponse(f"static/{file}")
+async def serve_static(file: str): 
+    return FileResponse(f"static/{file}")
 
+# --- SERVER START ---
 if __name__ == "__main__":
     import uvicorn
+    # Check if static folder exists for audio files
+    if not os.path.exists("static"):
+        os.makedirs("static")
     uvicorn.run(app, host="0.0.0.0", port=8000)
