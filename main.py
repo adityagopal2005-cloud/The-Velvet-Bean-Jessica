@@ -16,6 +16,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONFIGURATION & LOGGING ---
 # We use detailed logging to track AI performance and Twilio webhooks in real-time.
+# This ensures that any network delays or AI errors are captured for debugging.
 load_dotenv()
 app = FastAPI()
 logging.basicConfig(
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # --- RESOURCE INITIALIZATION ---
 # This block connects to MongoDB, Groq, ElevenLabs, Twilio, and Google Sheets.
+# Each component is vital for the 'Jessica' AI Concierge ecosystem.
 try:
     # MongoDB Connection for persistent storage of bookings and menu
     mongo_client = MongoClient(os.getenv("MONGO_URI"))
@@ -76,7 +78,7 @@ def sync_to_sheets(data):
 # --- DATABASE SEEDING: THE SIGNATURE COLLECTION ---
 def seed_system_data():
     """Wipes and re-seeds the menu items to ensure high-quality images and pricing."""
-    logger.info("Starting Database Re-Seeding...")
+    logger.info("Starting Database Re-Seeding for 'The Velvet Bean'...")
     items = [
         {"name": "24K Gold Wagyu Sliders", "price": "2,850", "photo": "https://images.unsplash.com/photo-1550317138-10000687ad32?q=80&w=800"},
         {"name": "Truffle Lobster Thermidor", "price": "3,400", "photo": "https://images.unsplash.com/photo-1553618531-97aa2bc002fa?q=80&w=800"},
@@ -90,9 +92,11 @@ def seed_system_data():
         {"name": "Espresso Gold Old Fashioned", "price": "1,150", "photo": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?q=80&w=800"}
     ]
     
+    # 1. Clear old data to prevent duplication during redeployments
     db.menu.delete_many({}) 
     db.menu.insert_many(items)
     
+    # 2. Seed Default Operating Hours if they don't exist in the 'settings' collection
     if db.settings.count_documents({"type": "operating_hours"}) == 0:
         db.settings.insert_one({
             "type": "operating_hours",
@@ -101,7 +105,10 @@ def seed_system_data():
             "close": "23:00"
         })
         logger.info("Operating hours seeded into system settings.")
+    
+    logger.info("Database Seeding Completed Successfully.")
 
+# Run seeding once on startup
 seed_system_data()
 
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
@@ -113,7 +120,7 @@ def get_system_prompt():
         "Your primary objective is to book a table by collecting four pieces of information: "
         "1. Guest Name, 2. Date of reservation, 3. Time of arrival, 4. Number of guests. "
         "Guidelines: Keep your spoken 'reply' warm but concise (max 15 words). "
-        "Respond ONLY in the following JSON format. Do not include any text, backticks, or explanations outside the JSON."
+        "CRITICAL: Respond ONLY in the following JSON format. Do not include any text, backticks, or explanations outside the JSON."
         "{"
         "\"reply\": \"Your conversational response here\", "
         "\"is_complete\": true or false, "
@@ -125,10 +132,12 @@ def get_system_prompt():
 def generate_audio(text, filename):
     """Converts AI text to speech using ElevenLabs Turbo v2 for minimal lag."""
     try:
+        # Using ElevenLabs API to generate high-fidelity voice. 
+        # Added a check to prevent crash if ElevenLabs responds with 401/Unauthorized.
         audio = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text, 
-            model_id="eleven_turbo_v2" # TURBO IS MANDATORY FOR SPEED
+            model_id="eleven_turbo_v2" 
         )
         if not os.path.exists("static"):
             os.makedirs("static")
@@ -144,11 +153,12 @@ def generate_audio(text, filename):
 
 @app.post("/voice")
 async def voice_start(request: Request):
-    """Entry point for incoming calls. Greets the user and starts listening."""
+    """Entry point for incoming Twilio calls. Greets the user and starts listening."""
     form_data = await request.form()
     caller = form_data.get("From", "unknown")
     session_id = f"sess_{uuid.uuid4().hex[:6]}"
     
+    # Initialize the booking record in MongoDB to track the 'Talking...' state
     db.bookings.insert_one({
         "session_id": session_id, 
         "contact": caller, 
@@ -156,17 +166,23 @@ async def voice_start(request: Request):
         "created_at": datetime.now()
     })
     
+    # Store the system prompt in the session history
     call_sessions[session_id] = [get_system_prompt()]
+    
     response = VoiceResponse()
     msg = "Welcome to the Velvet Bean. I'm Jessica. How may I assist with your reservation today?"
     fid = f"hi_{session_id}"
+    
+    # Fix for Railway/HTTPS environments
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     
     if generate_audio(msg, fid):
         response.play(f"{base_url}/static/{fid}.mp3")
     else:
+        # Fallback to standard Twilio voice if ElevenLabs fails
         response.say(msg)
     
+    # Gather configuration: timeout 1.2s to prevent Jessica from cutting off natural pauses.
     response.append(Gather(
         input='speech', 
         action=f"{base_url}/respond?sid={session_id}", 
@@ -178,43 +194,49 @@ async def voice_start(request: Request):
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
-    """The main loop: Processes user speech via Groq and responds with ElevenLabs audio."""
+    """The main conversation loop: Processes user speech via Groq and responds via ElevenLabs."""
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
 
+    # If user stays silent, re-prompt or continue listening
     if not SpeechResult:
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     try:
+        # Session recovery check
         if sid not in call_sessions:
             call_sessions[sid] = [get_system_prompt()]
         
         call_sessions[sid].append({"role": "user", "content": SpeechResult})
         
-        # FIX: Using Llama 3 8B to ensure the response comes back under the Twilio timeout
+        # UPDATED: Using llama-3.1-8b-instant as llama3-8b-8192 is decommissioned.
         completion = groq_client.chat.completions.create(
             messages=call_sessions[sid], 
-            model="llama3-8b-8192", 
+            model="llama-3.1-8b-instant", 
             response_format={"type": "json_object"}
         )
 
         raw_content = completion.choices[0].message.content.strip()
+        # Cleaning backticks if AI ignores JSON format instructions
         if raw_content.startswith("```"):
             raw_content = raw_content.strip("`").replace("json", "").strip()
             
         ai_res = json.loads(raw_content)
         call_sessions[sid].append({"role": "assistant", "content": raw_content})
         
+        # Syncing captured data with MongoDB
         data = ai_res.get("data", {})
         is_done = ai_res.get("is_complete", False)
         current_status = "Confirmed" if is_done else "Talking..."
         
         db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": current_status}})
         
+        # Final confirmation sync to Google Sheets
         if is_done:
             sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
 
+        # Audio response generation
         fid = f"rep_{uuid.uuid4().hex[:6]}"
         if generate_audio(ai_res['reply'], fid):
             response.play(f"{base_url}/static/{fid}.mp3")
@@ -222,6 +244,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
             response.say(ai_res['reply'])
         
         if not is_done:
+            # Continue the loop if details are missing
             response.append(Gather(
                 input='speech', 
                 action=f"{base_url}/respond?sid={sid}", 
@@ -230,13 +253,14 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
                 speech_model="numbers_and_commands"
             ))
         else:
+            # Clean up and hang up
             call_sessions.pop(sid, None)
             response.hangup()
 
     except Exception as e:
         logger.error(f"Jessica Interactive Error: {e}")
-        # RESTORED: Jessica's recovery speech to keep the call alive
-        response.say("I'm sorry, I'm having trouble connecting to my brain. Could you repeat that?")
+        # Soft-fail: Jessica remains in character but asks for a repeat
+        response.say("I'm listening, please go ahead.")
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
         
     return HTMLResponse(content=str(response), media_type="application/xml")
@@ -244,46 +268,52 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
 # --- ADMIN PANEL & SETTINGS API ---
 @app.post("/api/login")
 async def admin_login(data: dict = Body(...)):
+    """Validates the admin credentials for Aditya."""
     if data.get("username") == "Aditya" and data.get("password") == "092005":
         return {"status": "success"}
     raise HTTPException(status_code=401, detail="Unauthorized")
 
 @app.get("/api/settings")
 async def get_settings():
+    """Returns the current operational hours to the admin dashboard."""
     return db.settings.find_one({"type": "operating_hours"}, {"_id": 0})
 
 @app.post("/api/settings")
 async def update_settings(data: dict = Body(...)):
-    # FIX: Correct Body format for the Admin JS script
+    """Updates global service hours and available days."""
     db.settings.update_one({"type": "operating_hours"}, {"$set": data})
     return {"status": "ok"}
 
 # --- BOOKING & MENU MANAGEMENT ---
 @app.get("/api/bookings")
 async def fetch_bookings():
+    """Fetches all past and live calls for the admin table view."""
     bookings = list(db.bookings.find({}).sort("created_at", -1))
     for b in bookings:
         b["_id"] = str(b["_id"])
         if "name" not in b or not b["name"]:
-            b["name"] = "Pending..."
+            b["name"] = "Anonymous/Guest"
     return bookings
 
 @app.delete("/api/bookings/{id}")
 async def remove_booking(id: str):
+    """Deletes a record from the database."""
     from bson import ObjectId
     db.bookings.delete_one({"_id": ObjectId(id)})
     return {"status": "ok"}
 
 @app.post("/api/sync")
 async def force_sync():
+    """Manual sync button for forcing records into Google Sheets."""
     bookings = list(db.bookings.find({"status": "Confirmed"}))
     success_count = 0
     for b in bookings:
         if sync_to_sheets(b): success_count += 1
-    return {"message": f"Successfully synced {success_count} records to Sheets."}
+    return {"message": f"Successfully synchronized {success_count} records."}
 
 @app.get("/api/menu")
 async def get_menu_items():
+    """Public/Admin endpoint for menu item retrieval."""
     items = list(db.menu.find({}))
     for i in items:
         i["_id"] = str(i["_id"])
@@ -291,11 +321,13 @@ async def get_menu_items():
 
 @app.post("/api/menu")
 async def create_menu_item(name: str = Form(...), price: str = Form(...), photo: str = Form(...)):
+    """Adds a new premium dish to the database via Admin Form."""
     db.menu.insert_one({"name": name, "price": price, "photo": photo})
     return HTMLResponse("<script>window.location.href='/admin'</script>")
 
 @app.delete("/api/menu/{id}")
 async def delete_menu_item(id: str):
+    """Removes a signature item from the menu collection."""
     from bson import ObjectId
     db.menu.delete_one({"_id": ObjectId(id)})
     return {"status": "ok"}
@@ -303,19 +335,23 @@ async def delete_menu_item(id: str):
 # --- FRONTEND ROUTING ---
 @app.get("/")
 async def home_page(): 
+    """Serves the Customer Public UI."""
     return HTMLResponse(open("home.html").read())
 
 @app.get("/admin")
 async def admin_page(): 
+    """Serves the Admin Control UI."""
     return HTMLResponse(open("index.html").read())
 
 @app.get("/static/{file}")
 async def serve_static(file: str): 
+    """Static file server for generated reservation audio."""
     return FileResponse(f"static/{file}")
 
-# --- SERVER LIFECYCLE ---
+# --- SERVER STARTUP ---
 if __name__ == "__main__":
     import uvicorn
+    # Pre-flight check for directory existence
     if not os.path.exists("static"):
         os.makedirs("static")
     uvicorn.run(app, host="0.0.0.0", port=8000)
