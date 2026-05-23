@@ -118,7 +118,7 @@ def generate_audio(text, filename):
         audio = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text, 
-            model_id="eleven_turbo_v2_5"
+            model_id="eleven_turbo_v2" # FAST MODEL FOR LOW LATENCY
         )
         # Ensure the directory exists right before saving
         if not os.path.exists("static"):
@@ -157,7 +157,15 @@ async def voice_start(request: Request):
     else:
         response.say(msg)
     
-    response.append(Gather(input='speech', action=f"{base_url}/respond?sid={session_id}", language='en-IN', speech_timeout='1.2'))
+    # IMPROVED GATHER: Added barge-in protection and faster timeout
+    response.append(Gather(
+        input='speech', 
+        action=f"{base_url}/respond?sid={session_id}", 
+        language='en-IN', 
+        speech_timeout='1.0',
+        hints="reservation, velvet bean, table for two",
+        speech_model="numbers_and_commands"
+    ))
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
@@ -168,7 +176,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
 
     if not SpeechResult:
         response.say("I'm sorry, I missed that. Could you please repeat the details?")
-        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
+        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.0'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     try:
@@ -178,10 +186,10 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         
         call_sessions[sid].append({"role": "user", "content": SpeechResult})
         
-        # Process with Groq
+        # Process with Groq - USING 8B MODEL FOR INSTANT RESPONSES
         completion = groq_client.chat.completions.create(
             messages=call_sessions[sid], 
-            model="llama-3.3-70b-versatile", 
+            model="llama3-8b-8192", 
             response_format={"type": "json_object"}
         )
         ai_res = json.loads(completion.choices[0].message.content)
@@ -207,7 +215,14 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
             response.say(ai_res['reply'])
         
         if not is_done:
-            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
+            # CONTINUE GATHER WITH SAME FAST SETTINGS
+            response.append(Gather(
+                input='speech', 
+                action=f"{base_url}/respond?sid={sid}", 
+                language='en-IN', 
+                speech_timeout='1.0',
+                speech_model="numbers_and_commands"
+            ))
         else:
             # Cleanup session to save memory
             call_sessions.pop(sid, None)
@@ -216,7 +231,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
     except Exception as e:
         logger.error(f"Jessica Response Error: {e}")
         response.say("I apologize, but my connection was interrupted. Please tell me again?")
-        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN'))
+        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.0'))
         
     return HTMLResponse(content=str(response), media_type="application/xml")
 
