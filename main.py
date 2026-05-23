@@ -14,9 +14,11 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
+# Create static folder for audio files if it doesn't exist
 if not os.path.exists("static"):
     os.makedirs("static")
 
+# Resource Connections
 try:
     mongo_client = MongoClient(os.getenv("MONGO_URI"))
     db = mongo_client["RestaurantDB"] 
@@ -26,30 +28,34 @@ try:
 except Exception as e:
     print(f"CRITICAL Resource Failure: {e}")
 
-# Persistent chat history (In a real app, use a DB for this)
+# Simple chat history storage
 chat_history = []
 
 def get_system_prompt():
+    """Sets the persona for Jessica and defines the JSON data structure."""
     return {
         "role": "system", 
-        "content": f"""You are Jessica, the concierge at 'The Velvet Bean Bistro'. 
+        "content": f"""You are Jessica, the professional concierge at 'The Velvet Bean Bistro'. 
         TODAY: {datetime.now().strftime('%A, %d %B %Y')}
         
-        GOAL: Collect Name, Date, Day of the week, Time, and Number of Guests.
-        NOTES: If they have special requests, put them in 'notes'.
+        GOAL: You MUST collect: 1. Name, 2. Date, 3. Day of the week, 4. Time, 5. Number of Guests.
+        NOTES: Capture any special requirements (window seat, allergies, etc.) in the 'notes' field.
         
         RULES:
-        - NEVER end the call until you have Name, Date, Time, and Guests.
-        - Only set 'is_complete' to true AFTER you say 'Goodbye'.
+        - NEVER end the call until all 5 data points are collected.
+        - Summarize the booking details before saying goodbye.
+        - Only set 'is_complete' to true AFTER your final goodbye.
         
-        JSON ONLY: {{
-            "reply": "verbal response", 
+        JSON STRUCTURE:
+        {{
+            "reply": "verbal response here", 
             "is_complete": false, 
             "data": {{"name": "null", "date": "null", "day": "null", "time": "null", "guests": "null", "notes": "null"}}
         }}"""
     }
 
 def generate_audio(text, filename):
+    """Generates MP3 using ElevenLabs. Falls back to Twilio if blocked."""
     try:
         audio_generator = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
@@ -61,10 +67,11 @@ def generate_audio(text, filename):
             for chunk in audio_generator: f.write(chunk)
         return True
     except Exception as e:
-        print(f"ElevenLabs Error: {e}")
+        print(f"ElevenLabs 401/Error (Using Fallback Voice): {e}")
         return False
 
 def get_ai_response(user_input, caller_number):
+    """Processes user speech via Groq and updates MongoDB."""
     chat_history.append({"role": "user", "content": user_input})
     try:
         chat_completion = groq_client.chat.completions.create(
@@ -76,7 +83,7 @@ def get_ai_response(user_input, caller_number):
         chat_history.append({"role": "assistant", "content": res['reply']})
         
         extracted = res.get("data", {})
-        if extracted.get("name") != "null":
+        if extracted.get("name") != "null" or extracted.get("date") != "null":
             db.bookings.update_one(
                 {"contact": caller_number},
                 {"$set": {
@@ -86,27 +93,37 @@ def get_ai_response(user_input, caller_number):
                     "time": extracted.get("time"),
                     "guests": extracted.get("guests"),
                     "notes": extracted.get("notes"),
+                    "contact": caller_number,
                     "status": "Confirmed" if res.get("is_complete") else "In-Progress"
                 }},
                 upsert=True
             )
         return res
-    except:
-        return {"reply": "I'm sorry, I missed that.", "is_complete": False}
+    except Exception as e:
+        print(f"AI/Database Error: {e}")
+        return {"reply": "I'm sorry, I missed that details. Could you repeat?", "is_complete": False}
 
-# --- ROUTES ---
+# --- PRIMARY ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def home_page():
-    # This will now serve your actual home.html file instead of just text
+    """Restores your home design."""
     with open("home.html") as f: 
+        return f.read()
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    """Serves the Command Center."""
+    with open("index.html") as f: 
         return f.read()
 
 @app.post("/voice")
 async def voice_start(request: Request):
+    """Initial Twilio entry point."""
     global chat_history
     chat_history = [get_system_prompt()]
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+    
     response = VoiceResponse()
     msg = "Welcome to The Velvet Bean. I'm Jessica. How can I help you today?"
     
@@ -115,16 +132,18 @@ async def voice_start(request: Request):
     else:
         response.say(msg, voice='Polly.Aditi')
     
+    # Listen for 1.5s of silence before processing
     response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
     return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, SpeechResult: str = Form(None), From: str = Form(None)):
+    """Handles the conversation loop and prevents abrupt hang-ups."""
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
 
     if not SpeechResult:
-        response.say("I'm sorry, I'm still listening. Can you tell me the booking details?", voice='Polly.Aditi')
+        response.say("I'm sorry, I'm still listening. What were the details?", voice='Polly.Aditi')
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -136,6 +155,7 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     else:
         response.say(ai_decision['reply'], voice='Polly.Aditi')
 
+    # Ensure the call stays alive unless 'is_complete' is True
     if not ai_decision.get("is_complete"):
         response.append(Gather(input='speech', action=f"{base_url}/respond", language='en-IN', speech_timeout='1.5'))
     else:
@@ -143,20 +163,21 @@ async def handle_response(request: Request, SpeechResult: str = Form(None), From
     
     return HTMLResponse(content=str(response), media_type="application/xml")
 
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_page():
-    with open("index.html") as f: return f.read()
+# --- UTILITY ROUTES ---
 
 @app.get("/api/bookings")
 async def get_bookings():
+    """Fetches booking data for the admin spreadsheet."""
     bookings = list(db.bookings.find({}).sort("_id", -1))
     for b in bookings: b["_id"] = str(b["_id"])
     return bookings
 
 @app.get("/static/{file_name}")
 async def serve_static(file_name: str):
+    """Serves generated audio files to Twilio."""
     return FileResponse(f"static/{file_name}")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
