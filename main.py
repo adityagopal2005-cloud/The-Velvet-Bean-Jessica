@@ -118,28 +118,29 @@ def get_system_prompt():
     today_str = now.strftime('%A, %B %d')
     
     content_str = (
-        f"You are Jessica, the warm host at 'The Velvet Bean'. Today is {today_str}. "
-        "You must follow a natural sequence like a real person. "
+        f"You are Jessica, the sophisticated host at 'The Velvet Bean'. Today is {today_str}. "
         
+        "NAME LIBRARY & RECOGNITION: "
+        "- You have an extensive library of international and diverse names. "
+        "- If a user says a name that sounds like a common word (e.g., 'Rain', 'Joy', 'Aditya', 'Arjun'), "
+        "recognize it as a NAME, not a verb or noun. "
+        "- If the name is difficult, just do your best phonetically and move on gracefully. "
+
         "THE SEQUENCE: "
-        "1. NAME: If you don't know their name, ask for it first. "
-        "2. DATE: Once you have the name, ask what day they want to visit. "
-        "3. TIME: Once you have the date, ask for the time. "
-        "4. GUESTS: Finally, ask how many people are in the party. "
+        "1. NAME: Start here. If unknown, ask: 'May I have your name for the booking?' "
+        "2. DATE: Once named, ask: 'Wonderful, [Name]! What day shall we set aside for you?' "
+        "3. TIME: Then: 'And what time would you like to join us?' "
+        "4. GUESTS: Finally: 'Perfect. How many guests will be in your party?' "
         
-        "HUMAN RULES: "
-        "- ACKNOWLEDGE: Always start by acknowledging their previous answer (e.g., 'Lovely to meet you, Aditya!'). "
-        "- THE NEXT STEP: Then immediately ask the NEXT question in the sequence. "
-        "- DATE LOGIC: Assume 'Tuesday' is the very next Tuesday. Do not ask 'Which Tuesday'. "
-        "- BRIEF: Keep your 'reply' under 12 words. "
+        "RULES: "
+        "- Be breezy (Max 12 words per reply). "
+        "- Assume the very next Tuesday/Friday etc. No 'Which Tuesday' loops. "
         
         "JSON STRUCTURE: "
-        "{\"reply\": \"[Acknowledge] + [Next Question in Sequence]\", "
-        "\"is_complete\": false, "
+        "{\"reply\": \"[Acknowledge] + [Next Question]\", \"is_complete\": false, "
         "\"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
     )
     return {"role": "system", "content": content_str}
-
 
 # --- IMPROVED AUDIO GENERATION (With Fallback) ---
 def generate_audio(text, filename):
@@ -162,30 +163,35 @@ def generate_audio(text, filename):
         logger.error(f"ElevenLabs bypassed: {e}")
         return False
     
-    
+
+
 @app.post("/voice")
 async def voice_start(request: Request):
-        try:
-            form_data = await request.form()
-            session_id = f"sess_{uuid.uuid4().hex[:6]}"
-            base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
-            
-            call_sessions[session_id] = [get_system_prompt()]
-            
-            response = VoiceResponse()
-            # STEP 1: The Greeting and Name Request
-            msg = "Hi there! I'm Jessica from The Velvet Bean. May I start with your name, please?"
-            fid = f"hi_{session_id}"
-            
-            if generate_audio(msg, fid):
-                response.play(f"{base_url}/static/{fid}.mp3")
-            else:
-                response.say(msg, voice='Polly.Joanna', language='en-IN')
-            
-            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={session_id}", speech_timeout='auto'))
-            return HTMLResponse(content=str(response), media_type="application/xml")
-        except Exception as e:
-            return HTMLResponse(content="<Response><Say>One moment.</Say><Redirect>/voice</Redirect></Response>", media_type="application/xml")
+    try:
+        session_id = f"sess_{uuid.uuid4().hex[:6]}"
+        base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+        
+        call_sessions[session_id] = [get_system_prompt()]
+        
+        response = VoiceResponse()
+        msg = "Hi there! I'm Jessica from The Velvet Bean. May I start with your name for the reservation?"
+        
+        if generate_audio(msg, f"hi_{session_id}"):
+            response.play(f"{base_url}/static/hi_{session_id}.mp3")
+        else:
+            response.say(msg, voice='Polly.Joanna', language='en-IN')
+        
+        # ADDING HINTS: This acts as a 'Library' for the STT engine
+        response.append(Gather(
+            input='speech', 
+            action=f"{base_url}/respond?sid={session_id}", 
+            language='en-IN', 
+            speech_timeout='auto',
+            hints="Aditya, Arjun, Vihaan, Zara, Sai, My name is, reservation for" # Add common/difficult names here
+        ))
+        return HTMLResponse(content=str(response), media_type="application/xml")
+    except Exception as e:
+        return HTMLResponse(content="<Response><Redirect>/voice</Redirect></Response>", media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
@@ -193,7 +199,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
     response = VoiceResponse()
     
     if not SpeechResult:
-        response.say("I'm still here! Who am I speaking with?", voice='Polly.Joanna')
+        response.say("I'm still here! Could I get your name please?", voice='Polly.Joanna')
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='auto'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -208,10 +214,10 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         )
 
         ai_res = json.loads(completion.choices[0].message.content)
-        reply_text = ai_res.get("reply", "Perfect, what day shall I book that for?")
+        reply_text = ai_res.get("reply", "Got it. And what day works for you?")
         data = ai_res.get("data", {})
         
-        # Check if we have the full set to finish
+        # Check if we have the sequence finished
         is_done = all([data.get('name'), data.get('date'), data.get('time'), data.get('guests')])
 
         session_history.append({"role": "assistant", "content": completion.choices[0].message.content})
@@ -224,17 +230,22 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
             response.say(reply_text, voice='Polly.Joanna', language='en-IN')
 
         if is_done:
-            # Sync and Hangup
             sync_to_sheets({**data, "contact": From})
-            response.say(f"All set, {data.get('name')}! We'll see you on {data.get('date')} at {data.get('time')}. Goodbye!", voice='Polly.Joanna')
+            response.say(f"All set {data.get('name')}! See you on {data.get('date')}. Goodbye!", voice='Polly.Joanna')
             response.hangup()
         else:
-            # Continue the sequence
-            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='auto'))
+            # Continue the sequence with name hints still active
+            response.append(Gather(
+                input='speech', 
+                action=f"{base_url}/respond?sid={sid}", 
+                language='en-IN', 
+                speech_timeout='auto',
+                hints="Aditya, Arjun, Vihaan, My name is"
+            ))
 
     except Exception as e:
-        response.say("Sorry, I missed that. Can you repeat?", voice='Polly.Joanna')
-        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
+        response.say("Sorry, say that again?", voice='Polly.Joanna')
+        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}"))
 
     return HTMLResponse(content=str(response), media_type="application/xml")
 
