@@ -211,90 +211,81 @@ async def voice_start(request: Request):
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
-    """The main conversation loop: Processes user speech via Groq and responds via ElevenLabs."""
-    base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
-    response = VoiceResponse()
+        base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+        response = VoiceResponse()
+        
+        # 1. PRE-INITIALIZE VARIABLES (Prevents the 'data' crash)
+        data = {"name": "", "date": "", "time": "", "guests": ""}
+        is_done = False
+        reply_text = "I'm sorry, I'm having a bit of trouble. Could you repeat that?"
 
-    # If user stays silent, re-prompt or continue listening
-    if not SpeechResult:
-        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
+        if not SpeechResult:
+            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
+            return HTMLResponse(content=str(response), media_type="application/xml")
+
+        try:
+            if sid not in call_sessions:
+                call_sessions[sid] = [get_system_prompt()]
+            
+            call_sessions[sid].append({"role": "user", "content": SpeechResult})
+            
+            completion = groq_client.chat.completions.create(
+                messages=call_sessions[sid],  
+                model="llama-3.1-8b-instant",  
+                response_format={"type": "json_object"}
+            )
+
+            raw_content = completion.choices[0].message.content.strip()
+            ai_res = json.loads(raw_content)
+            
+            # 2. ASSIGN VALUES SAFELY
+            reply_text = ai_res.get("reply", "Certainly, what's next?")
+            data = ai_res.get("data", data) # Use fallback if 'data' is missing
+            is_done = ai_res.get("is_complete", False)
+            
+            call_sessions[sid].append({"role": "assistant", "content": raw_content})
+            
+            # 3. SAFE DATABASE UPDATE
+            if db is not None:
+                try:
+                    db.bookings.update_one(
+                        {"session_id": sid}, 
+                        {"$set": {**data, "status": "Confirmed" if is_done else "Talking..."}}
+                    )
+                except Exception as db_err:
+                    logger.error(f"DB Update Failed: {db_err}")
+
+            # 4. AUDIO GENERATION WITH FAILSAFE
+            fid = f"rep_{uuid.uuid4().hex[:6]}"
+            if generate_audio(reply_text, fid):
+                response.play(f"{base_url}/static/{fid}.mp3")
+            else:
+                # If ElevenLabs blocks you, use Twilio's built-in voice immediately
+                response.say(reply_text, voice='Polly.Joanna')
+
+            if is_done:
+                # Only try to sync if Sheets initialized correctly
+                try:
+                    sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
+                except:
+                    logger.error("Sheets sync skipped due to initialization error.")
+                response.hangup()
+            else:
+                response.append(Gather(
+                    input='speech', 
+                    action=f"{base_url}/respond?sid={sid}", 
+                    language='en-IN', 
+                    speech_timeout='auto',
+                    hints="reservation, tonight, tomorrow, guests"
+                ))
+
+        except Exception as e:
+            logger.error(f"CRITICAL ERROR in Loop: {e}")
+            response.say("I missed that. Please go ahead?")
+            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
+            
         return HTMLResponse(content=str(response), media_type="application/xml")
 
-    try:
-        # Session recovery check
-        if sid not in call_sessions:
-            call_sessions[sid] = [get_system_prompt()]
-        
-        call_sessions[sid].append({"role": "user", "content": SpeechResult})
-        
-        # FIX: Swapped decommissioned 'llama3-8b-8192' for 'llama-3.1-8b-instant'.
-        completion = groq_client.chat.completions.create(
-            messages=call_sessions[sid], 
-            model="llama-3.1-8b-instant", 
-            response_format={"type": "json_object"}
-        )
-
-        raw_content = completion.choices[0].message.content.strip()
-        # Cleaning backticks if AI ignores JSON format instructions
-        if raw_content.startswith("```"):
-            raw_content = raw_content.strip("`").replace("json", "").strip()
-            
-        ai_res = json.loads(raw_content)
-        # Inside handle_response, after ai_res = json.loads(raw_content)
-
-        booking_date_str = data.get("date", "")
-        if booking_date_str:
-            try:
-                # Basic attempt to parse the date to check if it's in the past
-                # Note: This depends on how the AI formats the date string
-                # For more robust sync, you'd use a library like dateutil.parser
-                pass 
-            except:
-                pass
-
-        # The AI's system prompt (Step 1) is usually enough to handle this 
-        # because we gave it the exact 'Today' date.
-        call_sessions[sid].append({"role": "assistant", "content": raw_content})
-        
-        # Sync captured data with MongoDB
-        data = ai_res.get("data", {})
-        is_done = ai_res.get("is_complete", False)
-        current_status = "Confirmed" if is_done else "Talking..."
-        
-        db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": current_status}})
-        
-        # Final confirmation sync to Google Sheets
-        if is_done:
-            sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
-
-        # Audio response generation with error-catch fallback
-        fid = f"rep_{uuid.uuid4().hex[:6]}"
-        if generate_audio(ai_res['reply'], fid):
-            response.play(f"{base_url}/static/{fid}.mp3")
-        else:
-            response.say(ai_res['reply'])
-        
-        if not is_done:
-            # Continue listening for missing reservation details
-            response.append(Gather(
-                input='speech', 
-                action=f"{base_url}/respond?sid={sid}", 
-                language='en-IN', 
-                speech_timeout='1.2',
-                speech_model="numbers_and_commands"
-            ))
-        else:
-            # Clean up session and hang up gracefully
-            call_sessions.pop(sid, None)
-            response.hangup()
-
-    except Exception as e:
-        logger.error(f"Jessica Interactive Error: {e}")
-        # Soft-fail recovery: Ask the user to continue rather than hanging up.
-        response.say("I'm sorry, I missed that. Could you please repeat?")
-        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='1.2'))
-        
-    return HTMLResponse(content=str(response), media_type="application/xml")
 
 # --- ADMIN PANEL & SETTINGS API ---
 @app.post("/api/login")
