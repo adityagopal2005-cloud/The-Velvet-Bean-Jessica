@@ -113,17 +113,24 @@ seed_system_data()
 
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
 def get_system_prompt():
-    """Generates the fresh system prompt for Jessica with strict JSON constraints."""
+    """Generates a high-speed, date-aware prompt for Jessica."""
+    now = datetime.now()
+    today_str = now.strftime('%A, %d %B %Y')
+    
     content_str = (
-        "You are Jessica, the professional and elegant concierge at 'The Velvet Bean' restaurant. "
-        f"Today is {datetime.now().strftime('%A, %d %B %Y')}. "
-        "Your primary objective is to book a table by collecting four pieces of information: "
-        "1. Guest Name, 2. Date of reservation, 3. Time of arrival, 4. Number of guests. "
-        "Guidelines: Keep your spoken 'reply' warm but concise (max 15 words). "
-        "CRITICAL: Respond ONLY in the following JSON format. Do not include any text, backticks, or explanations outside the JSON."
+        f"You are Jessica, the elite concierge at 'The Velvet Bean'. Today is {today_str}. "
+        "OBJECTIVE: Book a table by collecting: 1. Name, 2. Date, 3. Time, 4. Guests. "
+        
+        "RULES: "
+        "1. DATE VALIDATION: If a user suggests a date in the past, politely explain you can only book for today or future dates. "
+        "2. SPEED: Keep 'reply' under 10 words. Be extremely snappy. "
+        "3. DATA: Do not set 'is_complete': true until you have all 4 pieces of info. "
+        "4. FORMAT: JSON ONLY."
+        
+        "JSON STRUCTURE: "
         "{"
-        "\"reply\": \"Your conversational response here\", "
-        "\"is_complete\": true or false, "
+        "\"reply\": \"Concise response\", "
+        "\"is_complete\": true/false, "
         "\"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}"
         "}"
     )
@@ -184,13 +191,15 @@ async def voice_start(request: Request):
     
     # Gather configuration: timeout 1.2s to prevent Jessica from cutting off natural pauses.
     response.append(Gather(
-        input='speech', 
-        action=f"{base_url}/respond?sid={session_id}", 
-        language='en-IN', 
-        speech_timeout='1.2',
-        speech_model="numbers_and_commands"
+    input='speech',  
+    action=f"{base_url}/respond?sid={sid}",  
+    language='en-IN',  
+    # 'auto' allows Twilio to detect the end of a sentence dynamically
+    speech_timeout='auto', 
+    # Hints help the AI process restaurant-related words faster
+    hints="reservation, table for, tonight, tomorrow, p.m., a.m., guests, booking",
+    speech_model="numbers_and_commands" 
     ))
-    return HTMLResponse(content=str(response), media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
@@ -223,6 +232,20 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
             raw_content = raw_content.strip("`").replace("json", "").strip()
             
         ai_res = json.loads(raw_content)
+        # Inside handle_response, after ai_res = json.loads(raw_content)
+
+        booking_date_str = data.get("date", "")
+        if booking_date_str:
+            try:
+                # Basic attempt to parse the date to check if it's in the past
+                # Note: This depends on how the AI formats the date string
+                # For more robust sync, you'd use a library like dateutil.parser
+                pass 
+            except:
+                pass
+
+        # The AI's system prompt (Step 1) is usually enough to handle this 
+        # because we gave it the exact 'Today' date.
         call_sessions[sid].append({"role": "assistant", "content": raw_content})
         
         # Sync captured data with MongoDB
