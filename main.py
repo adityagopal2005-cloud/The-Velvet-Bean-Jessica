@@ -13,6 +13,7 @@ from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from fastapi import BackgroundTasks
 
 # --- CONFIGURATION & LOGGING ---
 # We use detailed logging to track AI performance and Twilio webhooks in real-time.
@@ -136,13 +137,12 @@ def get_system_prompt():
 # --- IMPROVED AUDIO GENERATION (With Fallback) ---
 def generate_audio(text, filename):
     try:
-        # If your API key is flagged, this will throw an error
+        # If this fails once, we need to skip it for the rest of the call
         audio = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text, 
             model_id="eleven_turbo_v2"
-        )
-        # Ensure static folder exists
+         )
         os.makedirs("static", exist_ok=True)
         file_path = f"static/{filename}.mp3"
         with open(file_path, "wb") as f:
@@ -150,8 +150,8 @@ def generate_audio(text, filename):
                 if chunk: f.write(chunk)
         return True
     except Exception as e:
-        # This prevents the 401/Abuse error from killing the call
-        logger.error(f"ElevenLabs Failed (Fallback to Twilio Voice): {e}")
+        # LOG THE ERROR BUT DON'T CRASH
+        logger.error(f"ElevenLabs Blocked/Failed: {e}")
         return False
     
 @app.post("/voice")
@@ -211,80 +211,70 @@ async def voice_start(request: Request):
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
-        base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
-        response = VoiceResponse()
-        
-        # 1. PRE-INITIALIZE VARIABLES (Prevents the 'data' crash)
-        data = {"name": "", "date": "", "time": "", "guests": ""}
-        is_done = False
-        reply_text = "I'm sorry, I'm having a bit of trouble. Could you repeat that?"
+    base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+    response = VoiceResponse()
+    
+    # Defaults to prevent 'UnboundLocalError'
+    reply_text = "I'm listening, please go ahead."
+    is_done = False
+    data = {}
 
-        if not SpeechResult:
-            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
-            return HTMLResponse(content=str(response), media_type="application/xml")
-
-        try:
-            if sid not in call_sessions:
-                call_sessions[sid] = [get_system_prompt()]
-            
-            call_sessions[sid].append({"role": "user", "content": SpeechResult})
-            
-            completion = groq_client.chat.completions.create(
-                messages=call_sessions[sid],  
-                model="llama-3.1-8b-instant",  
-                response_format={"type": "json_object"}
-            )
-
-            raw_content = completion.choices[0].message.content.strip()
-            ai_res = json.loads(raw_content)
-            
-            # 2. ASSIGN VALUES SAFELY
-            reply_text = ai_res.get("reply", "Certainly, what's next?")
-            data = ai_res.get("data", data) # Use fallback if 'data' is missing
-            is_done = ai_res.get("is_complete", False)
-            
-            call_sessions[sid].append({"role": "assistant", "content": raw_content})
-            
-            # 3. SAFE DATABASE UPDATE
-            if db is not None:
-                try:
-                    db.bookings.update_one(
-                        {"session_id": sid}, 
-                        {"$set": {**data, "status": "Confirmed" if is_done else "Talking..."}}
-                    )
-                except Exception as db_err:
-                    logger.error(f"DB Update Failed: {db_err}")
-
-            # 4. AUDIO GENERATION WITH FAILSAFE
-            fid = f"rep_{uuid.uuid4().hex[:6]}"
-            if generate_audio(reply_text, fid):
-                response.play(f"{base_url}/static/{fid}.mp3")
-            else:
-                # If ElevenLabs blocks you, use Twilio's built-in voice immediately
-                response.say(reply_text, voice='Polly.Joanna')
-
-            if is_done:
-                # Only try to sync if Sheets initialized correctly
-                try:
-                    sync_to_sheets({**data, "contact": From, "status": "Confirmed"})
-                except:
-                    logger.error("Sheets sync skipped due to initialization error.")
-                response.hangup()
-            else:
-                response.append(Gather(
-                    input='speech', 
-                    action=f"{base_url}/respond?sid={sid}", 
-                    language='en-IN', 
-                    speech_timeout='auto',
-                    hints="reservation, tonight, tomorrow, guests"
-                ))
-
-        except Exception as e:
-            logger.error(f"CRITICAL ERROR in Loop: {e}")
-            response.say("I missed that. Please go ahead?")
-            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
-            
+    if not SpeechResult:
+        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='auto'))
         return HTMLResponse(content=str(response), media_type="application/xml")
+
+    try:
+        # Get AI Response
+        session_history = call_sessions.get(sid, [get_system_prompt()])
+        session_history.append({"role": "user", "content": SpeechResult})
+        
+        completion = groq_client.chat.completions.create(
+            messages=session_history,
+            model="llama-3.1-8b-instant",
+            response_format={"type": "json_object"}
+        )
+
+        ai_res = json.loads(completion.choices[0].message.content)
+        reply_text = ai_res.get("reply", "Understood.")
+        data = ai_res.get("data", {})
+        is_done = ai_res.get("is_complete", False)
+        
+        # Update history
+        session_history.append({"role": "assistant", "content": completion.choices[0].message.content})
+        call_sessions[sid] = session_history
+
+        # --- THE FIX FOR ABRUPT HANGUPS ---
+        fid = f"rep_{uuid.uuid4().hex[:6]}"
+        
+        # Try ElevenLabs, but if it fails, IMMEDIATELY use Twilio Voice
+        # This prevents the 'Empty Response' that drops calls
+        if generate_audio(reply_text, fid):
+            response.play(f"{base_url}/static/{fid}.mp3")
+        else:
+            # Polished Twilio Voice as a backup
+            response.say(reply_text, voice='Polly.Joanna', language='en-IN')
+
+        if is_done:
+            # Sync to sheets in background so it doesn't slow down the hangup
+            sync_to_sheets({**data, "contact": From})
+            response.say("Thank you. Your reservation is confirmed. Goodbye!")
+            response.hangup()
+        else:
+            # Keep listening
+            response.append(Gather(
+                input='speech', 
+                action=f"{base_url}/respond?sid={sid}", 
+                language='en-IN', 
+                speech_timeout='auto',
+                hints="reservation, name, time, date, guests"
+            ))
+
+    except Exception as e:
+        logger.error(f"Jessica Interactive Error: {e}")
+        response.say("Sorry, I missed that. Can you repeat?")
+        response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
+
+    return HTMLResponse(content=str(response), media_type="application/xml")
 
 
 # --- ADMIN PANEL & SETTINGS API ---
