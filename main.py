@@ -115,34 +115,33 @@ seed_system_data()
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
 def get_system_prompt():
     now = datetime.now()
-    today_str = now.strftime('%A, %d %B %Y') # e.g., Sunday, 24 May 2026
+    today_str = now.strftime('%A, %d %B %Y') 
     
     content_str = (
         f"You are Jessica, the elite concierge at 'The Velvet Bean'. Today is {today_str}. "
-        "OBJECTIVE: Book a table by collecting: 1. Name, 2. Date, 3. Time, 4. Number of Guests. "
+        "OBJECTIVE: Book a table by collecting: 1. Name, 2. Date, 3. Time, 4. Guests. "
         
-        "STRICT RULES: "
-        f"1. CALENDAR SYNC: Today is {today_str}. If they ask for a date BEFORE this, "
-        "politely say 'I'm afraid I can only book for today onwards.' "
-        "2. SNAPPY REPLIES: Keep responses under 10 words. Be fast. "
-        "3. DATA FETCHING: Do not set 'is_complete': true until you have all 4 items (Name, Date, Time, Guests). "
-        "4. JSON ONLY: Respond only in the specified JSON format."
+        "RESERVATION RULES: "
+        f"1. DATE VALIDATION: Today is {today_str}. Future dates (tomorrow, next week, next month) are ENCOURAGED. "
+        "Only reject dates that are explicitly in the PAST (e.g., if today is May 24, reject May 20). "
+        "2. CONCISE: Keep your 'reply' under 12 words. "
+        "3. DATA: Only set 'is_complete': true when you have all 4 pieces of info. "
+        "4. FORMAT: JSON ONLY."
         
         "JSON STRUCTURE: "
-        "{\"reply\": \"Quick response\", \"is_complete\": false, "
-        "\"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
+        "{\"reply\": \"\", \"is_complete\": false, \"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
     )
     return {"role": "system", "content": content_str}
 
 # --- IMPROVED AUDIO GENERATION (With Fallback) ---
 def generate_audio(text, filename):
     try:
-        # If this fails once, we need to skip it for the rest of the call
+        # Set a strict timeout so we don't keep Twilio waiting
         audio = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text, 
             model_id="eleven_turbo_v2"
-         )
+        )
         os.makedirs("static", exist_ok=True)
         file_path = f"static/{filename}.mp3"
         with open(file_path, "wb") as f:
@@ -150,8 +149,9 @@ def generate_audio(text, filename):
                 if chunk: f.write(chunk)
         return True
     except Exception as e:
-        # LOG THE ERROR BUT DON'T CRASH
-        logger.error(f"ElevenLabs Blocked/Failed: {e}")
+        # If ElevenLabs is being slow or blocking you, fail IMMEDIATELY
+        # so the code can switch to Twilio's built-in voice.
+        logger.error(f"ElevenLabs bypassed: {e}")
         return False
     
 @app.post("/voice")
