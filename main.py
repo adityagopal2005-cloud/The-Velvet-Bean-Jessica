@@ -115,28 +115,24 @@ seed_system_data()
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
 def get_system_prompt():
     now = datetime.now()
-    today_str = now.strftime('%A, %d %B %Y')
-    
-    # Calculate the date for "Next Tuesday" so Jessica knows exactly which one it is
-    # This helps her stop asking "Which Tuesday?"
+    today_str = now.strftime('%A, %B %d')
     content_str = (
-        f"You are Jessica, the elite concierge at 'The Velvet Bean'. Today is {today_str}. "
-        "OBJECTIVE: Book a table by collecting: 1. Name, 2. Date, 3. Time, 4. Guests. "
+        f"You are Jessica, the sophisticated host at The Velvet Bean. Today is {today_str}. "
+        "Your goal is to be charming and efficient. "
         
-        "CALENDAR LOGIC: "
-        f"- If a user says 'next week', 'this weekend', or a day name like 'Tuesday', "
-        f"assume they mean the very next occurrence following {today_str}. "
-        "- NEVER ask 'which Tuesday' or 'what date' repeatedly. If they give a day, just say 'Perfect, Tuesday it is' and move to the next item. "
-        "- Reject ONLY dates that are strictly in the past. Future dates are always valid. "
+        "THE HUMAN FLOW: "
+        "1. ACKNOWLEDGE: If the guest gives info, say 'Wonderful' or 'Got it.' "
+        "2. PIVOT: Immediately ask for the NEXT missing piece of info. "
+        "3. NO LOOPS: If they say 'Tuesday', do not ask 'Which Tuesday'. Assume the upcoming one. "
+        "4. STYLE: Use short, breezy sentences. (Max 12 words). "
         
-        "CONVERSATION STYLE: "
-        "- Max 10 words per reply. Be extremely fast. "
-        "- Don't repeat yourself. If you have the date, ask for the Time or Number of Guests. "
+        "Example: Guest says 'Table for two.' You say: 'Perfect, a table for two. And what day were you thinking?' "
         
-        "JSON STRUCTURE: "
-        "{\"reply\": \"\", \"is_complete\": false, \"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
+        "STRICT JSON FORMAT: "
+        "{\"reply\": \"[Acknowledgement] + [Next Question]\", \"is_complete\": false, \"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
     )
     return {"role": "system", "content": content_str}
+
 
 # --- IMPROVED AUDIO GENERATION (With Fallback) ---
 def generate_audio(text, filename):
@@ -165,71 +161,48 @@ async def voice_start(request: Request):
         form_data = await request.form()
         caller = form_data.get("From", "unknown")
         session_id = f"sess_{uuid.uuid4().hex[:6]}"
+        base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
         
-        # Safety: Ensure the static folder exists for audio files
-        if not os.path.exists("static"):
-            os.makedirs("static")
-
-        # Log the booking start - Added a safety check for the DB
+        if not os.path.exists("static"): os.makedirs("static")
         if db is not None:
-            db.bookings.insert_one({
-                "session_id": session_id, 
-                "contact": caller, 
-                "status": "Talking...", 
-                "created_at": datetime.now()
-            })
+            db.bookings.insert_one({"session_id": session_id, "contact": caller, "status": "Talking...", "created_at": datetime.now()})
         
         call_sessions[session_id] = [get_system_prompt()]
         
         response = VoiceResponse()
-        msg = "Velvet Bean Concierge. How can I help with your reservation?"
+        # HUMAN GREETING: Introduces herself and asks an open question
+        msg = "Hi there! I'm Jessica from The Velvet Bean. How can I help you today?"
         fid = f"hi_{session_id}"
-        
-        base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
-        
-        # Speed: ElevenLabs generation
+
         if generate_audio(msg, fid):
             response.play(f"{base_url}/static/{fid}.mp3")
         else:
-            response.say(msg)
-        
-        # --- KEY CHANGE FOR SPEED ---
-        # We use 'hints' to help the AI recognize keywords faster
-        # and 'speech_timeout' to 'auto' so it responds the moment you stop talking.
+            response.say(msg, voice='Polly.Joanna', language='en-IN')
         response.append(Gather(
             input='speech',  
             action=f"{base_url}/respond?sid={session_id}",  
             language='en-IN',  
             speech_timeout='auto', 
-            hints="reservation, tonight, tomorrow, table for, guests, booking",
+            hints="reservation, tonight, tomorrow, booking, table",
             speech_model="numbers_and_commands"
         ))
         return HTMLResponse(content=str(response), media_type="application/xml")
     
     except Exception as e:
         logger.error(f"Error in /voice: {e}")
-        # Fallback response so the call doesn't just drop with a 500 error
-        res = VoiceResponse()
-        res.say("Welcome to the Velvet Bean. One moment please.")
-        res.redirect(f"{base_url}/voice") # Retry
-        return HTMLResponse(content=str(res), media_type="application/xml")
+        return HTMLResponse(content="<Response><Say>One moment please.</Say><Redirect>/voice</Redirect></Response>", media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
     base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
     response = VoiceResponse()
     
-    # Defaults to prevent 'UnboundLocalError'
-    reply_text = "I'm listening, please go ahead."
-    is_done = False
-    data = {}
-
     if not SpeechResult:
+        response.say("I'm still here! What can I do for you?", voice='Polly.Joanna', language='en-IN')
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='auto'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
     try:
-        # Get AI Response
         session_history = call_sessions.get(sid, [get_system_prompt()])
         session_history.append({"role": "user", "content": SpeechResult})
         
@@ -240,47 +213,44 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         )
 
         ai_res = json.loads(completion.choices[0].message.content)
-        reply_text = ai_res.get("reply", "Understood.")
+        reply_text = ai_res.get("reply", "Lovely. And when should we expect you?")
         data = ai_res.get("data", {})
-        is_done = ai_res.get("is_complete", False)
         
-        # Update history
+        # Check if we have all 4 pieces of data (Human check)
+        is_done = all([data.get('name'), data.get('date'), data.get('time'), data.get('guests')])
+
         session_history.append({"role": "assistant", "content": completion.choices[0].message.content})
         call_sessions[sid] = session_history
 
-        # --- THE FIX FOR ABRUPT HANGUPS ---
         fid = f"rep_{uuid.uuid4().hex[:6]}"
-        
-        # Try ElevenLabs, but if it fails, IMMEDIATELY use Twilio Voice
-        # This prevents the 'Empty Response' that drops calls
         if generate_audio(reply_text, fid):
             response.play(f"{base_url}/static/{fid}.mp3")
         else:
-            # Polished Twilio Voice as a backup
             response.say(reply_text, voice='Polly.Joanna', language='en-IN')
 
         if is_done:
-            # Sync to sheets in background so it doesn't slow down the hangup
+            # Closing the deal naturally
+            if db is not None:
+                db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": "Confirmed"}})
             sync_to_sheets({**data, "contact": From})
-            response.say("Thank you. Your reservation is confirmed. Goodbye!")
+            
+            final_msg = f"All set, {data.get('name', 'there')}! We've got you down for {data.get('date')} at {data.get('time')}. See you then!"
+            response.say(final_msg, voice='Polly.Joanna', language='en-IN')
             response.hangup()
         else:
-            # Keep listening
             response.append(Gather(
                 input='speech', 
                 action=f"{base_url}/respond?sid={sid}", 
                 language='en-IN', 
-                speech_timeout='auto',
-                hints="reservation, name, time, date, guests"
+                speech_timeout='auto'
             ))
 
     except Exception as e:
-        logger.error(f"Jessica Interactive Error: {e}")
-        response.say("Sorry, I missed that. Can you repeat?")
+        logger.error(f"Jessica Error: {e}")
+        response.say("I'm so sorry, could you say that one more time?", voice='Polly.Joanna', language='en-IN')
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
 
     return HTMLResponse(content=str(response), media_type="application/xml")
-
 
 # --- ADMIN PANEL & SETTINGS API ---
 @app.post("/api/login")
