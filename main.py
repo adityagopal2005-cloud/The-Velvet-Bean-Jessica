@@ -116,20 +116,27 @@ seed_system_data()
 def get_system_prompt():
     now = datetime.now()
     today_str = now.strftime('%A, %B %d')
+    
     content_str = (
-        f"You are Jessica, the sophisticated host at The Velvet Bean. Today is {today_str}. "
-        "Your goal is to be charming and efficient. "
+        f"You are Jessica, the warm host at 'The Velvet Bean'. Today is {today_str}. "
+        "You must follow a natural sequence like a real person. "
         
-        "THE HUMAN FLOW: "
-        "1. ACKNOWLEDGE: If the guest gives info, say 'Wonderful' or 'Got it.' "
-        "2. PIVOT: Immediately ask for the NEXT missing piece of info. "
-        "3. NO LOOPS: If they say 'Tuesday', do not ask 'Which Tuesday'. Assume the upcoming one. "
-        "4. STYLE: Use short, breezy sentences. (Max 12 words). "
+        "THE SEQUENCE: "
+        "1. NAME: If you don't know their name, ask for it first. "
+        "2. DATE: Once you have the name, ask what day they want to visit. "
+        "3. TIME: Once you have the date, ask for the time. "
+        "4. GUESTS: Finally, ask how many people are in the party. "
         
-        "Example: Guest says 'Table for two.' You say: 'Perfect, a table for two. And what day were you thinking?' "
+        "HUMAN RULES: "
+        "- ACKNOWLEDGE: Always start by acknowledging their previous answer (e.g., 'Lovely to meet you, Aditya!'). "
+        "- THE NEXT STEP: Then immediately ask the NEXT question in the sequence. "
+        "- DATE LOGIC: Assume 'Tuesday' is the very next Tuesday. Do not ask 'Which Tuesday'. "
+        "- BRIEF: Keep your 'reply' under 12 words. "
         
-        "STRICT JSON FORMAT: "
-        "{\"reply\": \"[Acknowledgement] + [Next Question]\", \"is_complete\": false, \"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
+        "JSON STRUCTURE: "
+        "{\"reply\": \"[Acknowledge] + [Next Question in Sequence]\", "
+        "\"is_complete\": false, "
+        "\"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
     )
     return {"role": "system", "content": content_str}
 
@@ -155,42 +162,30 @@ def generate_audio(text, filename):
         logger.error(f"ElevenLabs bypassed: {e}")
         return False
     
+    
 @app.post("/voice")
 async def voice_start(request: Request):
-    try:
-        form_data = await request.form()
-        caller = form_data.get("From", "unknown")
-        session_id = f"sess_{uuid.uuid4().hex[:6]}"
-        base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
-        
-        if not os.path.exists("static"): os.makedirs("static")
-        if db is not None:
-            db.bookings.insert_one({"session_id": session_id, "contact": caller, "status": "Talking...", "created_at": datetime.now()})
-        
-        call_sessions[session_id] = [get_system_prompt()]
-        
-        response = VoiceResponse()
-        # HUMAN GREETING: Introduces herself and asks an open question
-        msg = "Hi there! I'm Jessica from The Velvet Bean. How can I help you today?"
-        fid = f"hi_{session_id}"
-
-        if generate_audio(msg, fid):
-            response.play(f"{base_url}/static/{fid}.mp3")
-        else:
-            response.say(msg, voice='Polly.Joanna', language='en-IN')
-        response.append(Gather(
-            input='speech',  
-            action=f"{base_url}/respond?sid={session_id}",  
-            language='en-IN',  
-            speech_timeout='auto', 
-            hints="reservation, tonight, tomorrow, booking, table",
-            speech_model="numbers_and_commands"
-        ))
-        return HTMLResponse(content=str(response), media_type="application/xml")
-    
-    except Exception as e:
-        logger.error(f"Error in /voice: {e}")
-        return HTMLResponse(content="<Response><Say>One moment please.</Say><Redirect>/voice</Redirect></Response>", media_type="application/xml")
+        try:
+            form_data = await request.form()
+            session_id = f"sess_{uuid.uuid4().hex[:6]}"
+            base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+            
+            call_sessions[session_id] = [get_system_prompt()]
+            
+            response = VoiceResponse()
+            # STEP 1: The Greeting and Name Request
+            msg = "Hi there! I'm Jessica from The Velvet Bean. May I start with your name, please?"
+            fid = f"hi_{session_id}"
+            
+            if generate_audio(msg, fid):
+                response.play(f"{base_url}/static/{fid}.mp3")
+            else:
+                response.say(msg, voice='Polly.Joanna', language='en-IN')
+            
+            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={session_id}", speech_timeout='auto'))
+            return HTMLResponse(content=str(response), media_type="application/xml")
+        except Exception as e:
+            return HTMLResponse(content="<Response><Say>One moment.</Say><Redirect>/voice</Redirect></Response>", media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
@@ -198,7 +193,7 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
     response = VoiceResponse()
     
     if not SpeechResult:
-        response.say("I'm still here! What can I do for you?", voice='Polly.Joanna', language='en-IN')
+        response.say("I'm still here! Who am I speaking with?", voice='Polly.Joanna')
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='auto'))
         return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -213,10 +208,10 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
         )
 
         ai_res = json.loads(completion.choices[0].message.content)
-        reply_text = ai_res.get("reply", "Lovely. And when should we expect you?")
+        reply_text = ai_res.get("reply", "Perfect, what day shall I book that for?")
         data = ai_res.get("data", {})
         
-        # Check if we have all 4 pieces of data (Human check)
+        # Check if we have the full set to finish
         is_done = all([data.get('name'), data.get('date'), data.get('time'), data.get('guests')])
 
         session_history.append({"role": "assistant", "content": completion.choices[0].message.content})
@@ -229,25 +224,16 @@ async def handle_response(request: Request, sid: str, SpeechResult: str = Form(N
             response.say(reply_text, voice='Polly.Joanna', language='en-IN')
 
         if is_done:
-            # Closing the deal naturally
-            if db is not None:
-                db.bookings.update_one({"session_id": sid}, {"$set": {**data, "status": "Confirmed"}})
+            # Sync and Hangup
             sync_to_sheets({**data, "contact": From})
-            
-            final_msg = f"All set, {data.get('name', 'there')}! We've got you down for {data.get('date')} at {data.get('time')}. See you then!"
-            response.say(final_msg, voice='Polly.Joanna', language='en-IN')
+            response.say(f"All set, {data.get('name')}! We'll see you on {data.get('date')} at {data.get('time')}. Goodbye!", voice='Polly.Joanna')
             response.hangup()
         else:
-            response.append(Gather(
-                input='speech', 
-                action=f"{base_url}/respond?sid={sid}", 
-                language='en-IN', 
-                speech_timeout='auto'
-            ))
+            # Continue the sequence
+            response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", language='en-IN', speech_timeout='auto'))
 
     except Exception as e:
-        logger.error(f"Jessica Error: {e}")
-        response.say("I'm so sorry, could you say that one more time?", voice='Polly.Joanna', language='en-IN')
+        response.say("Sorry, I missed that. Can you repeat?", voice='Polly.Joanna')
         response.append(Gather(input='speech', action=f"{base_url}/respond?sid={sid}", speech_timeout='1.0'))
 
     return HTMLResponse(content=str(response), media_type="application/xml")
