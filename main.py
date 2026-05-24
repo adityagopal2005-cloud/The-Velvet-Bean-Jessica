@@ -113,52 +113,47 @@ seed_system_data()
 
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
 def get_system_prompt():
-    """Updated to be faster, date-aware, and strict about info collection."""
     now = datetime.now()
-    # Jessica now knows exactly what today is to avoid old bookings
-    today_str = now.strftime('%A, %d %B %Y')
+    today_str = now.strftime('%A, %d %B %Y') # e.g., Sunday, 24 May 2026
     
     content_str = (
         f"You are Jessica, the elite concierge at 'The Velvet Bean'. Today is {today_str}. "
-        "OBJECTIVE: Book a table by strictly collecting: 1. Name, 2. Date, 3. Time, 4. Guests. "
+        "OBJECTIVE: Book a table by collecting: 1. Name, 2. Date, 3. Time, 4. Number of Guests. "
         
-        "RULES: "
-        "1. NO PAST DATES: If a user suggests a date before today, politely tell them we only accept future bookings. "
-        "2. BE SNAPPY: Your 'reply' must be under 12 words. Speak quickly and professionally. "
-        "3. DATA INTEGRITY: Do not set 'is_complete': true until all 4 fields in 'data' are filled. "
-        "4. FORMAT: Respond ONLY in pure JSON."
+        "STRICT RULES: "
+        f"1. CALENDAR SYNC: Today is {today_str}. If they ask for a date BEFORE this, "
+        "politely say 'I'm afraid I can only book for today onwards.' "
+        "2. SNAPPY REPLIES: Keep responses under 10 words. Be fast. "
+        "3. DATA FETCHING: Do not set 'is_complete': true until you have all 4 items (Name, Date, Time, Guests). "
+        "4. JSON ONLY: Respond only in the specified JSON format."
         
         "JSON STRUCTURE: "
-        "{"
-        "\"reply\": \"Concise response\", "
-        "\"is_complete\": false, "
-        "\"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}"
-        "}"
+        "{\"reply\": \"Quick response\", \"is_complete\": false, "
+        "\"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}}"
     )
     return {"role": "system", "content": content_str}
 
+# --- IMPROVED AUDIO GENERATION (With Fallback) ---
 def generate_audio(text, filename):
-    """Converts AI text to speech using ElevenLabs Turbo v2 for minimal lag."""
     try:
-        # Added a robust check to catch the 401/Unauthorized error seen in your logs.
+        # If your API key is flagged, this will throw an error
         audio = el_client.text_to_speech.convert(
             voice_id="cgSgspJ2msm6clMCkdW9", 
             text=text, 
-            model_id="eleven_turbo_v2" 
+            model_id="eleven_turbo_v2"
         )
-        if not os.path.exists("static"):
-            os.makedirs("static")
-        
+        # Ensure static folder exists
+        os.makedirs("static", exist_ok=True)
         file_path = f"static/{filename}.mp3"
         with open(file_path, "wb") as f:
             for chunk in audio:
                 if chunk: f.write(chunk)
         return True
     except Exception as e:
-        # Log the specific error (e.g., 'Unusual activity detected' or 'Unauthorized')
-        logger.error(f"ElevenLabs Generation Error: {e}")
+        # This prevents the 401/Abuse error from killing the call
+        logger.error(f"ElevenLabs Failed (Fallback to Twilio Voice): {e}")
         return False
-
+    
 @app.post("/voice")
 async def voice_start(request: Request):
     try:
