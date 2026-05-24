@@ -113,24 +113,25 @@ seed_system_data()
 
 # --- VOICE AI LOGIC (AI CONCIERGE) ---
 def get_system_prompt():
-    """Generates a high-speed, date-aware prompt for Jessica."""
+    """Updated to be faster, date-aware, and strict about info collection."""
     now = datetime.now()
+    # Jessica now knows exactly what today is to avoid old bookings
     today_str = now.strftime('%A, %d %B %Y')
     
     content_str = (
         f"You are Jessica, the elite concierge at 'The Velvet Bean'. Today is {today_str}. "
-        "OBJECTIVE: Book a table by collecting: 1. Name, 2. Date, 3. Time, 4. Guests. "
+        "OBJECTIVE: Book a table by strictly collecting: 1. Name, 2. Date, 3. Time, 4. Guests. "
         
         "RULES: "
-        "1. DATE VALIDATION: If a user suggests a date in the past, politely explain you can only book for today or future dates. "
-        "2. SPEED: Keep 'reply' under 10 words. Be extremely snappy. "
-        "3. DATA: Do not set 'is_complete': true until you have all 4 pieces of info. "
-        "4. FORMAT: JSON ONLY."
+        "1. NO PAST DATES: If a user suggests a date before today, politely tell them we only accept future bookings. "
+        "2. BE SNAPPY: Your 'reply' must be under 12 words. Speak quickly and professionally. "
+        "3. DATA INTEGRITY: Do not set 'is_complete': true until all 4 fields in 'data' are filled. "
+        "4. FORMAT: Respond ONLY in pure JSON."
         
         "JSON STRUCTURE: "
         "{"
         "\"reply\": \"Concise response\", "
-        "\"is_complete\": true/false, "
+        "\"is_complete\": false, "
         "\"data\": {\"name\": \"\", \"date\": \"\", \"time\": \"\", \"guests\": \"\"}"
         "}"
     )
@@ -160,46 +161,58 @@ def generate_audio(text, filename):
 
 @app.post("/voice")
 async def voice_start(request: Request):
-    """Entry point for incoming Twilio calls. Greets the user and starts listening."""
-    form_data = await request.form()
-    caller = form_data.get("From", "unknown")
-    session_id = f"sess_{uuid.uuid4().hex[:6]}"
+    try:
+        form_data = await request.form()
+        caller = form_data.get("From", "unknown")
+        session_id = f"sess_{uuid.uuid4().hex[:6]}"
+        
+        # Safety: Ensure the static folder exists for audio files
+        if not os.path.exists("static"):
+            os.makedirs("static")
+
+        # Log the booking start - Added a safety check for the DB
+        if db is not None:
+            db.bookings.insert_one({
+                "session_id": session_id, 
+                "contact": caller, 
+                "status": "Talking...", 
+                "created_at": datetime.now()
+            })
+        
+        call_sessions[session_id] = [get_system_prompt()]
+        
+        response = VoiceResponse()
+        msg = "Velvet Bean Concierge. How can I help with your reservation?"
+        fid = f"hi_{session_id}"
+        
+        base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
+        
+        # Speed: ElevenLabs generation
+        if generate_audio(msg, fid):
+            response.play(f"{base_url}/static/{fid}.mp3")
+        else:
+            response.say(msg)
+        
+        # --- KEY CHANGE FOR SPEED ---
+        # We use 'hints' to help the AI recognize keywords faster
+        # and 'speech_timeout' to 'auto' so it responds the moment you stop talking.
+        response.append(Gather(
+            input='speech',  
+            action=f"{base_url}/respond?sid={session_id}",  
+            language='en-IN',  
+            speech_timeout='auto', 
+            hints="reservation, tonight, tomorrow, table for, guests, booking",
+            speech_model="numbers_and_commands"
+        ))
+        return HTMLResponse(content=str(response), media_type="application/xml")
     
-    # Initialize the booking record in MongoDB to track the 'Talking...' state
-    db.bookings.insert_one({
-        "session_id": session_id, 
-        "contact": caller, 
-        "status": "Talking...", 
-        "created_at": datetime.now()
-    })
-    
-    # Store the system prompt in the session history
-    call_sessions[session_id] = [get_system_prompt()]
-    
-    response = VoiceResponse()
-    msg = "Welcome to the Velvet Bean. I'm Jessica. How may I assist with your reservation today?"
-    fid = f"hi_{session_id}"
-    
-    # Force base_url to use https to avoid Twilio 'Invalid Content-Type' errors on Railway.
-    base_url = str(request.base_url).replace("http://", "https://").rstrip("/")
-    
-    if generate_audio(msg, fid):
-        response.play(f"{base_url}/static/{fid}.mp3")
-    else:
-        # If ElevenLabs fails (as seen in log), fallback to default Twilio voice so call doesn't drop.
-        response.say(msg)
-    
-    # Gather configuration: timeout 1.2s to prevent Jessica from cutting off natural pauses.
-    response.append(Gather(
-    input='speech',  
-    action=f"{base_url}/respond?sid={sid}",  
-    language='en-IN',  
-    # 'auto' allows Twilio to detect the end of a sentence dynamically
-    speech_timeout='auto', 
-    # Hints help the AI process restaurant-related words faster
-    hints="reservation, table for, tonight, tomorrow, p.m., a.m., guests, booking",
-    speech_model="numbers_and_commands" 
-    ))
+    except Exception as e:
+        logger.error(f"Error in /voice: {e}")
+        # Fallback response so the call doesn't just drop with a 500 error
+        res = VoiceResponse()
+        res.say("Welcome to the Velvet Bean. One moment please.")
+        res.redirect(f"{base_url}/voice") # Retry
+        return HTMLResponse(content=str(res), media_type="application/xml")
 
 @app.post("/respond")
 async def handle_response(request: Request, sid: str, SpeechResult: str = Form(None), From: str = Form(None)):
